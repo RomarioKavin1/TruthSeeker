@@ -37,7 +37,7 @@ export class ContractService {
 
   constructor() {
     this.baseUrl =
-      process.env.NEXT_PUBLIC_SERVER_BASE_URL || "http://localhost:4001";
+      process.env.NEXT_PUBLIC_SERVER_BASE_URL || "http://localhost:4002";
   }
 
   async submitZKPassportVerification(
@@ -75,12 +75,12 @@ export class ContractService {
       // Create blob for Hyli transaction
       const blob = {
         contract_name: "zkpassport",
-        data: JSON.stringify(zkPassportAction),
+        data: zkPassportAction,
       };
 
       const headers = new Headers();
       headers.append("content-type", "application/json");
-      headers.append("x-user", userAddress);
+      headers.append("x-user", `${userAddress}@zkpassport`);
       headers.append("x-session-key", "zkpassport-session");
       headers.append("x-request-signature", "zkpassport-signature");
 

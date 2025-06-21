@@ -144,7 +144,13 @@ struct IncrementRequest {
 
 #[derive(serde::Deserialize)]
 struct ZKPassportVerifyRequest {
-    blob: Blob,
+    blob: ZKPassportBlobRequest,
+}
+
+#[derive(serde::Deserialize)]
+struct ZKPassportBlobRequest {
+    contract_name: String,
+    data: ZKPassportAction,
 }
 
 
@@ -228,7 +234,9 @@ async fn zkpassport_verify(
     let auth = AuthHeaders::from_headers(&headers)?;
     
     let identity = auth.user.clone();
-    let zkpassport_blob = request.blob;
+    
+    // Convert the JSON request to a proper Blob
+    let zkpassport_blob = request.blob.data.as_blob(ctx.zkpassport_cn.clone());
 
     let res = ctx
         .client
