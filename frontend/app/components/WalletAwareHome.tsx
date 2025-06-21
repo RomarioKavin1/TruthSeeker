@@ -110,6 +110,12 @@ export default function WalletAwareHome() {
               >
                 ZK + Wallet Integration
               </Link>
+              <Link
+                href="/hyli-verify"
+                className="block w-full bg-gradient-to-r from-green-500 to-teal-500 text-white text-center py-3 rounded-xl hover:from-green-600 hover:to-teal-600 transition-all font-semibold"
+              >
+                Manual Hyli Verification
+              </Link>
             </div>
           </div>
 
@@ -145,6 +151,12 @@ export default function WalletAwareHome() {
                   Ready for blockchain transactions
                 </p>
               </div>
+              <Link
+                href="/hyli-verify"
+                className="block w-full bg-gradient-to-r from-green-500 to-teal-500 text-white text-center py-3 rounded-xl hover:from-green-600 hover:to-teal-600 transition-all font-semibold"
+              >
+                🔧 Manual Proof Verification
+              </Link>
             </div>
           </div>
 
