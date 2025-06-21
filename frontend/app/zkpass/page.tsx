@@ -15,6 +15,8 @@ export default function Home() {
   const [onChainVerified, setOnChainVerified] = useState<boolean | undefined>(
     undefined
   );
+  const [proofData, setProofData] = useState<ProofResult[]>([]);
+  const [contractAddress, setContractAddress] = useState("");
   const zkPassportRef = useRef<ZKPassport | null>(null);
 
   useEffect(() => {
@@ -33,6 +35,8 @@ export default function Home() {
     setUniqueIdentifier("");
     setVerified(undefined);
     setOnChainVerified(undefined);
+    setProofData([]);
+    setContractAddress("");
 
     const queryBuilder = await zkPassportRef.current.request({
       name: "ZKPassport",
@@ -78,6 +82,7 @@ export default function Home() {
     onProofGenerated(async (proof: ProofResult) => {
       console.log("Proof result", proof);
       proofs.push(proof);
+      setProofData([...proofs]);
       setMessage(`Proofs received`);
       setRequestInProgress(false);
 
@@ -99,6 +104,8 @@ export default function Home() {
         // For now the verifier contract is only deployed on Ethereum Sepolia
         const { address, abi, functionName } =
           zkPassportRef.current.getSolidityVerifierDetails("ethereum_sepolia");
+
+        setContractAddress(address);
 
         // Create a public client for sepolia
         const publicClient = createPublicClient({
@@ -188,6 +195,24 @@ export default function Home() {
         <p className="mt-2">
           <b>On-chain verified:</b> {onChainVerified ? "Yes" : "No"}
         </p>
+      )}
+      {contractAddress && (
+        <p className="mt-2">
+          <b>Verifier Contract Address:</b> {contractAddress}
+        </p>
+      )}
+      {proofData.length > 0 && (
+        <div className="mt-4 w-full max-w-4xl">
+          <h3 className="text-lg font-bold mb-2">Generated Proofs:</h3>
+          {proofData.map((proof, index) => (
+            <div key={index} className="mb-4 p-4 bg-gray-100 rounded-lg">
+              <h4 className="font-semibold mb-2">Proof {index + 1}:</h4>
+              <pre className="text-xs bg-white p-2 rounded overflow-auto max-h-60">
+                {JSON.stringify(proof, null, 2)}
+              </pre>
+            </div>
+          ))}
+        </div>
       )}
       {!requestInProgress && (
         <button
