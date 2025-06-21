@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 1rem;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        p {
+            margin: 0;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .documentation {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 1rem;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+        .checkbox-container {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .checkbox-container label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+        .checkbox-container input[type="checkbox"] {
+            cursor: pointer;
+        }
+        .log-container {
+            display: flex;
+            gap: 1rem;
+        }
+        .log-column {
+            flex-basis: 100%;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 0.5rem;
+            min-width: 200px;
+            overflow-x: scroll;
+        }
+        .log-column.hidden {
+            display: none;
+        }
+        .log-column.hidden > div {
+            display: none;
+        }
+        .log-column > div {
+            width: max-content;
+        }
+        .log-entry {
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            height: 1.1rem;
+            display: flex;
+            align-items: center;
+        }
+        .log-entry .error {
+            color: rgb(202, 16, 16);
+        }
+        .log-entry .warn {
+            color: rgb(245, 204, 21);
+        }
+        .log-entry .debug {
+            color: rgb(17, 17, 200);
+        }
+        .log-entry .info {
+            color: rgb(4, 168, 4);
+        }
+        .log-entry .trace {
+            color: rgb(148, 8, 164);
+        }
+        #log-line {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background: white;
+            padding: 1rem;
+            border-top: 1px solid #ddd;
+        }
+        .timestamp {
+            font-weight: bold;
+            color: #555;
+        }
+
+    </style>
+</head>
+<body>
+    <div>
+        <div class="documentation">
+            <h1 style="margin-top: 0">Log Viewer</h1>
+            <p>Paste your logs below and click "Process Logs" to view them in a structured format.</p>
+            <p>Logs are categorized by node, timestamp, and level (INFO, ERROR, WARN, DEBUG).</p>
+        </div>
+
+        <textarea id="log-input" placeholder="Paste your logs here" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+        <button onclick="processLogs()" style="margin-bottom: 1rem;">Process Logs</button>
+    </div>
+    <div style="position: sticky; top: 0px; padding-bottom: 1rem; background-color: white;">
+        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; max-width: 800px">
+            <input id="filter-input" type="text" placeholder="Filter logs by string..." style="flex:1; padding:0.5rem; font-size:14px;" />
+            <button onclick="applyFilter()">Filter</button>
+        </div>
+        <div id="column-visibility" class="checkbox-container">
+            <strong>Show/Hide Columns:</strong>
+        </div>
+    </div>
+
+    <div id="log-container" class="log-container"></div>
+
+    <div id="log-line"></div>
+
+    <script>
+        function parseLogs(log) {
+            const lines = log.trim().split("\n");
+            const nodeLogs = {};
+            const timestamps = new Set();
+
+            const parseLine = (line) => {
+                // Extract line format matches `node-2(pubId) 2024-12-03T17:05:25.324793Z  INFO ...`
+                const reg = line.match(/([a-zA-Z0-9-_]+\([a-zA-Z0-9]+\)) +(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{2,8}Z) +(INFO|ERROR|WARN|DEBUG|TRACE) (.*)/);
+                try {
+                    const [all, node, timestamp, level, ...rest] = reg || [];
+                    if (!node || !timestamp || !level || !rest) throw new Error("Invalid log line");
+                    return { node, timestamp, level, message: rest.join(" ") };
+                } catch (e) {
+                    //console.error("Error parsing line", line, e);
+                }
+                // Turmoil logs:
+                // Format: 2025-05-02T07:47:54.704769Z  INFO node{name="node-3"}: ...
+                const reg_turmoil = line.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{2,8}Z) +(INFO|ERROR|WARN|DEBUG|TRACE) +node\{name="([^"]+)"\}: *(.*)/);
+                try {
+                    const [all, timestamp, level, node, ...rest] = reg_turmoil || [];
+                    if (!node || !timestamp || !level || !rest) throw new Error("Invalid log line");
+                    return { node, timestamp, level, message: rest.join(" ") };
+                } catch (e) {
+                    //console.error("Error parsing line", line, e);
+                }
+                // Regular logs:
+                // Extract line format matches `2024-12-03T17:05:25.324793Z  INFO ...`
+                const reg2 = line.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{2,8}Z) +(INFO|ERROR|WARN|DEBUG|TRACE) (.*)/);
+                try {
+                    const node = "other";
+                    const [all, timestamp, level, ...rest] = reg2 || [];
+                    if (!node || !timestamp || !level || !rest) throw new Error("Invalid log line");
+                    return { node, timestamp, level, message: rest.join(" ") };
+                } catch (e) {
+                    //console.error("Error parsing line", line, e);
+                }
+                return undefined;
+            }
+
+            lines.forEach(line => {
+                const parsed = parseLine(line);
+                if (!parsed) return;
+                const { node, timestamp, level, message } = parsed;
+                if (!nodeLogs[node]) nodeLogs[node] = [];
+                // Parse timestamp as a date
+                const date = new Date(timestamp)
+                timestamps.add(date);
+                nodeLogs[node].push({ timestamp: date, level, message });
+            });
+            return { nodeLogs, sortedTimestamps: Array.from(timestamps).sort((a, b) => a - b) };
+        }
+
+        function renderLogs(nodeLogs, timestamps, filterString = "") {
+            const container = document.getElementById("log-container");
+            const visibilityContainer = document.getElementById("column-visibility");
+            container.innerHTML = ""; // Clear previous logs
+            visibilityContainer.innerHTML = "<strong>Show/Hide Columns:</strong>"; // Clear previous checkboxes
+
+            // Create timestamp column checkbox
+            const timeCheckbox = document.createElement("label");
+            timeCheckbox.innerHTML = `<input type="checkbox" checked data-column="timestamp"> Timestamp`;
+            visibilityContainer.appendChild(timeCheckbox);
+
+            // Filtering logic: only show timestamps where at least one node's log message contains the filter string
+            let filteredTimestamps = timestamps;
+            if (filterString && filterString.trim() !== "") {
+                const filter = filterString.toLowerCase();
+                filteredTimestamps = timestamps.filter(ts => {
+                    return Object.values(nodeLogs).some(logs => {
+                        return logs.some(log => log.timestamp === ts
+                            && log.message && log.message.toLowerCase().includes(filter)
+                        );
+                    });
+                });
+            }
+
+            const timeColumn = document.createElement("div");
+            timeColumn.classList.add("log-column");
+            timeColumn.dataset.columnId = "timestamp";
+            timeColumn.style = "flex-basis: 200px;flex-shrink: 0;";
+            timeColumn.innerHTML = "<h3>Timestamp</h3>";
+            filteredTimestamps.forEach(timestamp => {
+                const entryDiv = document.createElement("div");
+                entryDiv.classList.add("log-entry");
+                entryDiv.textContent = timestamp.toISOString();
+                timeColumn.appendChild(entryDiv);
+            });
+
+            container.appendChild(timeColumn);
+
+            Object.entries(nodeLogs).forEach(([node, logs]) => {
+                // Create checkbox for this node
+                const checkbox = document.createElement("label");
+                checkbox.innerHTML = `<input type="checkbox" checked data-column="${node}"> ${node}`;
+                visibilityContainer.appendChild(checkbox);
+
+                const wrapperColumn = document.createElement("div");
+                wrapperColumn.classList.add("log-column");
+                wrapperColumn.dataset.columnId = node;
+
+                const title = document.createElement("h3");
+                title.textContent = `${node}`;
+
+                const column = document.createElement("div");
+                column.appendChild(title);
+
+                filteredTimestamps.forEach(timestamp => {
+                    const logEntry = logs.find(log => log.timestamp === timestamp);
+                    const entryDiv = document.createElement("p");
+                    entryDiv.classList.add("log-entry");
+                    entryDiv.onclick = () => {
+                        const logLine = document.getElementById("log-line");
+                        logLine.textContent = logEntry ? logEntry.message : "-";
+                    };
+                    entryDiv.innerHTML = logEntry
+                        ? `<span style="width:50px" class="${logEntry.level.toLowerCase()}">${logEntry.level}</span><span>${logEntry.message}</span>`
+                        : `-`;
+                    column.appendChild(entryDiv);
+                });
+
+                wrapperColumn.appendChild(column);
+                container.appendChild(wrapperColumn);
+            });
+
+            // Add event listeners to checkboxes
+            visibilityContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const columnId = e.target.dataset.column;
+                    const column = container.querySelector(`[data-column-id="${columnId}"]`);
+                    if (column) {
+                        if (e.target.checked) {
+                            column.classList.remove('hidden');
+                        } else {
+                            column.classList.add('hidden');
+                        }
+                    }
+                });
+            });
+        }
+
+        let lastNodeLogs = null;
+        let lastTimestamps = null;
+        function processLogs() {
+            const rawLog = document.getElementById("log-input");
+            const { nodeLogs, sortedTimestamps } = parseLogs(rawLog.value);
+            rawLog.value = "";
+            lastNodeLogs = nodeLogs;
+            lastTimestamps = sortedTimestamps;
+            renderLogs(nodeLogs, sortedTimestamps, document.getElementById("filter-input").value);
+        }
+
+        function applyFilter() {
+            if (!lastNodeLogs || !lastTimestamps) return;
+            const filterString = document.getElementById("filter-input").value;
+            renderLogs(lastNodeLogs, lastTimestamps, filterString);
+        }
+    </script>
+</body>
+</html>

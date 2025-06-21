@@ -1,0 +1,2 @@
+[alias]
+ntest = "nextest run --workspace"

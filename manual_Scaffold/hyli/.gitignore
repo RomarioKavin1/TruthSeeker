@@ -1,0 +1,7 @@
+data_node*
+*.bin
+
+.sqlx
+
+# Added by cargo
+/target

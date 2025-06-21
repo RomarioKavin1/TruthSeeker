@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cargo Tree Viewer</title>
+    <style>
+        p {
+            font-size: 1.0em;
+            font-family: sans-serif;
+        }
+        ul {
+            list-style-type: none;
+            padding-left: 25px;
+        }
+        li {
+            cursor: pointer;
+            font-family: sans-serif;
+
+            -webkit-user-select: none; /* Safari */
+            -ms-user-select: none; /* IE 10 and IE 11 */
+            user-select: none; /* Standard syntax */
+        }
+        li:hover {
+            background-color: rgba(0, 0, 0, 0.03);
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Cargo Tree Viewer</h1>
+    <div class="flex">
+    <div>
+        <p>Run with <span style="font-family: monospace; border: 1px solid blue; border-radius: 4px; padding: 2px 6px">cargo tree -e no-dev --charset ascii --prefix depth</span> to get the tree structure.</p>
+        <textarea id="treeInput" rows="10" cols="80" placeholder="Paste your tree structure here"></textarea>
+        <br>
+        <button onclick="renderTree()">Render Tree</button>
+    </div>
+    <div>
+        <p>Run with <span style="font-family: monospace; border: 1px solid blue; border-radius: 4px; padding: 2px 6px">cargo +nightly build --timings=json -Z unstable-options > timings.json</span> to get the build times.</p>
+        <textarea id="buildTimes" rows="10" cols="80" placeholder="Paste your tree structure here"></textarea>
+        <br>
+        <button onclick="extractBuildTimes()">Extract build times</button>
+    </div>
+</div>
+    <input type="checkbox" id="showDuplicates" checked onclick="renderTree()"><label for="showDuplicates">Show duplicates</label>
+    <ul id="cargoTree"></ul>
+    <script>
+        function parseTree(treeText) {
+            const lines = treeText.trim().split('\n');
+            const root = { name: lines[0].trim(), children: [], duration: 0 };
+            const stack = [root];
+
+            const highest_level_seen = {};
+            const crate_data = {};
+
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                try {
+                    const data = line.match(/^([0-9]+)(.+) v([^ ]+) ?(\([^)*]+\))?(\(\*\))?/);
+                    const node = {
+                        id: `${data[2]} v${data[3]}`,
+                        name: data[2] + ' v' + data[3],
+                        level: +data[1],
+                        children: [],
+                    };
+
+                    if (highest_level_seen?.[node.id] === undefined || highest_level_seen[node.id] > node.level)
+                        highest_level_seen[node.id] = node.level;
+                    if (crate_data[node.id] === undefined)
+                        crate_data[node.id] = node;
+
+                    let level = +data[1];
+                    while (stack.length > level) stack.pop();
+                    stack[stack.length - 1].children.push(node);
+                    stack.push(node);
+                } catch (e) {
+                    //console.error('Failed to parse line:', line);
+                }
+            }
+
+            for (crate in crate_data) {
+                crate_data[crate].actual_children = crate_data[crate].children;
+            }
+            
+            // Filter the stack, removing any dependency that isn't at its highest level
+            const processStack = (node) => {
+                node.children = node.children.filter(child => {
+                    //console.log("Comparing for ", child.name, highest_level_seen[child.name][0], child.level);
+                    child.highest_level = highest_level_seen[child.name] === child.level;
+                    if (child.highest_level) {
+                        child.children = crate_data[child.id].actual_children;
+                        processStack(child);
+                    } else {
+                        child.children = [];
+                    }
+                    // For now keep everything we'll show duplicates.
+                    return true;
+                });
+            }
+            processStack(root);
+
+            return root;
+        }
+
+        function buildTree(node) {
+            const li = document.createElement('li');
+            
+            const totalRecursive = (node) => {
+                let total = 0;
+                node.children.forEach(child => total += totalRecursive(child));
+                return total + (node.highest_level ? (node.duration || 1) : 0);
+            }
+            // Sort children in decreasing order of total items
+            node.children.sort((a, b) => totalRecursive(b) - totalRecursive(a));
+
+            const formatDuration = (duration) => {
+                if (duration === undefined) return '??';
+                if (duration < 1) return `${duration.toFixed(2)}`;
+                return `${duration.toFixed(1)}`;
+            }
+
+            li.innerHTML = `- (Total: ${formatDuration(totalRecursive(node))}, self: ${formatDuration(node.duration)}s) <b>${node.name}</b>`;
+            //`- (${formatDuration(totalRecursive(node))}) ${node.name} (${formatDuration(node.duration)}s)`;
+
+            if (node.children.length > 0) {
+                const ul = document.createElement('ul');
+                const others = document.createElement('li');
+                others.innerText = `... and ${node.children.length - 5} more`;
+                const others_ul = document.createElement('ul');
+                others.addEventListener('click', e => {
+                    e.stopPropagation();
+                    others_ul.classList.toggle('hidden');
+                });
+                node.children.forEach((child, i) => {
+                    if (child.highest_level || document.getElementById('showDuplicates').checked)
+                        if (i < 5)
+                            ul.appendChild(buildTree(child));
+                        else
+                            others_ul.appendChild(buildTree(child));
+                });
+                if (others_ul.children.length > 0) {
+                    others.appendChild(others_ul);
+                    ul.appendChild(others);
+                }
+                li.appendChild(ul);
+                li.addEventListener('click', e => {
+                    e.stopPropagation();
+                    ul.classList.toggle('hidden');
+                });
+            }
+
+            return li;
+        }
+
+        function extractBuildTimes() {
+            const buildTimes = {};
+            const log = document.getElementById('buildTimes').value;
+            const lines = log.split('\n');
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.indexOf('timing-info') === -1) continue;
+                // parse as JSON
+                try {
+                    const pl = JSON.parse(line);
+                    const time = pl.duration;
+                    let name = pl.target.name;
+
+                    // Try to extract a more specific name
+                    const specname = pl.package_id.match(/^registry.+#(.+)@(.+)/);
+                    //if (name.indexOf("sp1") !== -1) console.log(name, specname);//specname[1], specname[2]);
+                    if (specname?.length === 3)
+                        name = `${specname[1]} v${specname[2]}`;
+                    if (buildTimes[name] === undefined)
+                        buildTimes[name] = time;
+                    else
+                        buildTimes[name] += time;
+                } catch (e) {
+                    console.error(line);
+                    console.error('Failed to parse JSON:', e);
+                }
+            }
+            // Update the parsedTree with build times
+            const updateBuildTimes = (node) => {
+                if (buildTimes[node.name] !== undefined) {
+                    node.duration = buildTimes[node.name];
+                } else if (buildTimes?.[node.name.split(" ")?.[0]] !== undefined) {
+                    node.duration = buildTimes?.[node.name.split(" ")?.[0]];
+            }
+                node.children.forEach(child => updateBuildTimes(child));
+            }
+            updateBuildTimes(parsedTree);
+            const treeContainer = document.getElementById('cargoTree');
+            treeContainer.innerHTML = '';
+            treeContainer.appendChild(buildTree(parsedTree));
+
+            
+            return buildTimes;
+        }
+
+        var parsedTree = null;
+
+        function renderTree() {
+            const treeText = document.getElementById('treeInput').value;
+            parsedTree = parseTree(treeText);
+            const treeContainer = document.getElementById('cargoTree');
+            treeContainer.innerHTML = '';
+            treeContainer.appendChild(buildTree(parsedTree));
+            extractBuildTimes();
+        }
+    </script>
+</body>
+</html>

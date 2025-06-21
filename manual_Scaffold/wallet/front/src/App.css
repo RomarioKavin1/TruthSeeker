@@ -1,0 +1,315 @@
+/* Wallet App Global Styles */
+
+#root {
+    max-width: 100%;
+    margin: 0;
+    min-height: 100vh;
+}
+
+/* Wallet Showcase Styles */
+.wallet-showcase-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    gap: 2rem;
+    background: var(--bg-primary);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Background Effects */
+.wallet-showcase-container::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 20% 50%, rgba(223, 100, 69, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(223, 100, 69, 0.05) 0%, transparent 50%);
+    animation: rotate 60s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.wallet-showcase-logo {
+    font-size: 3rem;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    animation: fadeInScale 0.8s ease-out;
+}
+
+.wallet-showcase-logo img {
+    height: 3rem;
+    filter: drop-shadow(0 0 20px rgba(223, 100, 69, 0.5));
+    transition: all 0.3s ease;
+}
+
+/* Page-Specific Styles */
+
+/* Send Page */
+.send-section {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.send-form {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 2rem;
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--shadow-card);
+}
+
+.send-form h2 {
+    font-family: var(--font-heading);
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--text-primary);
+    margin: 0 0 2rem 0;
+    text-align: center;
+}
+
+/* History Page */
+.transactions-list {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.transaction {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    padding: 1.5rem;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    backdrop-filter: var(--glass-blur);
+    transition: all 0.3s ease;
+}
+
+.transaction:hover {
+    transform: translateX(5px);
+    border-color: rgba(223, 100, 69, 0.3);
+}
+
+.transaction.send {
+    border-left: 4px solid var(--hyli-orange);
+}
+
+.transaction.receive {
+    border-left: 4px solid var(--success-green);
+}
+
+.transaction-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.transaction .type {
+    font-weight: var(--font-semibold);
+    color: var(--text-primary);
+}
+
+.transaction .amount {
+    color: var(--hyli-orange);
+    font-weight: var(--font-semibold);
+}
+
+.transaction-details {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+.transaction-hash {
+    color: var(--hyli-orange);
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.transaction-hash:hover {
+    text-decoration: underline;
+    text-shadow: var(--glow-orange);
+}
+
+.no-transactions {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-secondary);
+}
+
+/* Session Keys Page */
+.session-keys-section {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Balance/Receive Page */
+.balance-section {
+    text-align: center;
+    padding: 2rem;
+}
+
+.balance-section h2 {
+    font-family: var(--font-heading);
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--text-primary);
+    margin-bottom: 2rem;
+}
+
+.balance-amount {
+    font-family: var(--font-mono);
+    font-size: var(--text-3xl);
+    font-weight: var(--font-bold);
+    background: linear-gradient(135deg, var(--text-primary) 0%, var(--hyli-orange) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 1rem 0;
+}
+
+.receive-section {
+    margin-top: 3rem;
+    padding: 2rem;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    backdrop-filter: var(--glass-blur);
+}
+
+.address-display {
+    margin-top: 1rem;
+}
+
+.address-display code {
+    display: block;
+    background: rgba(30, 41, 51, 0.5);
+    border: 1px solid var(--glass-border);
+    padding: 1rem;
+    border-radius: 8px;
+    margin: 1rem 0;
+    word-break: break-all;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+}
+
+/* Faucet Link */
+.faucet-link {
+    display: inline-block;
+    margin-top: 1rem;
+}
+
+/* Send Form */
+.send-section {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.send-form {
+    padding: 2rem;
+}
+
+.send-form .card-title {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.select-wrapper {
+    position: relative;
+}
+
+.select-icon {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--hyli-orange);
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.status-message {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+
+.transaction-hash {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.transaction-hash code {
+    font-family: var(--font-mono);
+}
+
+.transaction-hash a {
+    color: var(--hyli-orange);
+    text-decoration: none;
+    transition: opacity 0.3s ease;
+}
+
+.transaction-hash a:hover {
+    opacity: 0.8;
+}
+
+/* Loading States */
+.loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+}
+
+/* Animations */
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .wallet-showcase-logo {
+        font-size: 2rem;
+    }
+
+    .wallet-showcase-logo img {
+        height: 2rem;
+    }
+
+    .send-form,
+    .receive-section {
+        padding: 1.5rem;
+    }
+
+    .transaction {
+        padding: 1rem;
+    }
+}

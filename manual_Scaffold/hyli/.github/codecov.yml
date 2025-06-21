@@ -1,0 +1,31 @@
+github_checks:
+  # Disable annotations, too noisy.
+  annotations: false
+
+ignore:
+  - "crates/bonsai-runner"
+
+coverage:
+  status:
+    patch:
+      default:
+        target: auto
+        threshold: 20%
+
+    project:
+      default: false
+      sdk:
+        target: auto
+        threshold: 10%
+        paths: 
+          - "contract-sdk"
+      contracts:
+        target: auto
+        threshold: 10%
+        paths: 
+          - "contracts/"
+      src:
+        paths: 
+          - "src/"  
+        target: auto
+        threshold: 10%
