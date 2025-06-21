@@ -26,8 +26,8 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -72,7 +72,11 @@ body {
 .app-title {
   font-size: 32px;
   font-weight: 700;
-  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--color-primary) 0%,
+    var(--color-secondary) 100%
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -113,17 +117,28 @@ body {
   font-size: 16px;
   color: var(--text-main);
   font-weight: 600;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
+}
+
+/* Action Buttons Container */
+.action-buttons {
+  display: flex;
+  gap: 20px;
+  max-width: 600px;
+  margin: 0 auto 32px;
+  justify-content: center;
 }
 
 /* Main Action Button */
 .blob-button {
-  display: block;
-  width: 100%;
-  max-width: 600px;
-  margin: 0 auto 32px;
+  flex: 1;
+  min-width: 200px;
   padding: 20px 32px;
-  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--color-primary) 0%,
+    var(--color-secondary) 100%
+  );
   color: white;
   border: none;
   border-radius: var(--radius-l);
@@ -136,14 +151,42 @@ body {
   overflow: hidden;
 }
 
+/* ZKPassport Toggle Button */
+.zkpassport-toggle-button {
+  flex: 1;
+  min-width: 200px;
+  padding: 20px 32px;
+  background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-l);
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 600;
+  box-shadow: var(--shadow-xl);
+  transition: all var(--anim-fast) var(--anim-ease);
+  position: relative;
+  overflow: hidden;
+}
+
+.zkpassport-toggle-button.verified {
+  background: linear-gradient(90deg, #155724 0%, #28a745 100%);
+  box-shadow: 0 16px 40px rgba(40, 167, 69, 0.3);
+}
+
 .blob-button::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
   transition: left 0.6s ease;
 }
 
@@ -222,10 +265,14 @@ body {
 }
 
 .contract-state h2::before {
-  content: '';
+  content: "";
   width: 8px;
   height: 8px;
-  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--color-primary) 0%,
+    var(--color-secondary) 100%
+  );
   border-radius: 50%;
 }
 
@@ -279,7 +326,8 @@ body {
 }
 
 /* Smooth transitions for all interactive elements */
-button, input {
+button,
+input {
   transition: all var(--anim-fast) var(--anim-ease);
 }
 
@@ -306,4 +354,26 @@ button, input {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
+}
+
+/* ZKPassport Section */
+.zkpassport-section {
+  margin: 30px auto;
+  max-width: 800px;
+  padding: 20px 0;
+  border-top: 2px solid var(--border-main);
+}
+
+/* Media Queries for Action Buttons */
+@media (max-width: 768px) {
+  .action-buttons {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .blob-button,
+  .zkpassport-toggle-button {
+    min-width: auto;
+    width: 100%;
+  }
 }

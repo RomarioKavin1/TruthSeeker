@@ -9,6 +9,7 @@ use client_sdk::{
 use conf::Conf;
 use contract1::Contract1;
 use contract2::Contract2;
+use zkpassport::ZKPassport;
 use hyle_modules::{
     bus::{metrics::BusMetrics, SharedMessageBus},
     modules::{
@@ -40,6 +41,9 @@ pub struct Args {
 
     #[arg(long, default_value = "contract2")]
     pub contract2_cn: String,
+
+    #[arg(long, default_value = "zkpassport")]
+    pub zkpassport_cn: String,
 }
 
 #[tokio::main]
@@ -74,6 +78,11 @@ async fn main() -> Result<()> {
             program_id: contract2::client::tx_executor_handler::metadata::PROGRAM_ID,
             initial_state: Contract2::default().commit(),
         },
+        init::ContractInit {
+            name: args.zkpassport_cn.clone().into(),
+            program_id: zkpassport::client::tx_executor_handler::metadata::PROGRAM_ID,
+            initial_state: ZKPassport::default().commit(),
+        },
     ];
 
     match init::init_node(node_client.clone(), indexer_client.clone(), contracts).await {
@@ -99,6 +108,7 @@ async fn main() -> Result<()> {
         node_client,
         contract1_cn: args.contract1_cn.clone().into(),
         contract2_cn: args.contract2_cn.clone().into(),
+        zkpassport_cn: args.zkpassport_cn.clone().into(),
     });
 
     handler.build_module::<AppModule>(app_ctx.clone()).await?;

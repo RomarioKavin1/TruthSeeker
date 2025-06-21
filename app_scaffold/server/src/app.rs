@@ -14,6 +14,7 @@ use client_sdk::{
 };
 use contract1::{Contract1, Contract1Action};
 use contract2::Contract2Action;
+use zkpassport::{ZKPassportAction};
 
 use hyle_modules::{
     bus::{BusClientReceiver, SharedMessageBus},
@@ -34,6 +35,7 @@ pub struct AppModuleCtx {
     pub node_client: Arc<NodeApiHttpClient>,
     pub contract1_cn: ContractName,
     pub contract2_cn: ContractName,
+    pub zkpassport_cn: ContractName,
 }
 
 module_bus_client! {
@@ -51,6 +53,7 @@ impl Module for AppModule {
             bus: Arc::new(Mutex::new(bus.new_handle())),
             contract1_cn: ctx.contract1_cn.clone(),
             contract2_cn: ctx.contract2_cn.clone(),
+            zkpassport_cn: ctx.zkpassport_cn.clone(),
             client: ctx.node_client.clone(),
         };
 
@@ -64,6 +67,7 @@ impl Module for AppModule {
             .route("/_health", get(health))
             .route("/api/increment", post(increment))
             .route("/api/config", get(get_config))
+            .route("/api/zkpassport/verify", post(zkpassport_verify))
             .with_state(state)
             .layer(cors); // Appliquer le middleware CORS
 
@@ -92,6 +96,7 @@ struct RouterCtx {
     pub client: Arc<NodeApiHttpClient>,
     pub contract1_cn: ContractName,
     pub contract2_cn: ContractName,
+    pub zkpassport_cn: ContractName,
 }
 
 async fn health() -> impl IntoResponse {
@@ -135,6 +140,11 @@ struct ConfigResponse {
 #[derive(serde::Deserialize)]
 struct IncrementRequest {
     wallet_blobs: [Blob; 2],
+}
+
+#[derive(serde::Deserialize)]
+struct ZKPassportVerifyRequest {
+    blob: Blob,
 }
 
 
@@ -208,4 +218,37 @@ async fn send(ctx: RouterCtx, auth: AuthHeaders, wallet_blobs: [Blob; 2]) -> Res
         }
     })
     .await?
+}
+
+async fn zkpassport_verify(
+    State(ctx): State<RouterCtx>,
+    headers: HeaderMap,
+    Json(request): Json<ZKPassportVerifyRequest>
+) -> Result<impl IntoResponse, AppError> {
+    let auth = AuthHeaders::from_headers(&headers)?;
+    
+    let identity = auth.user.clone();
+    let zkpassport_blob = request.blob;
+
+    let res = ctx
+        .client
+        .send_tx_blob(BlobTransaction::new(identity.clone(), vec![zkpassport_blob]))
+        .await;
+
+    if let Err(ref e) = res {
+        let root_cause = e.root_cause().to_string();
+        return Err(AppError(
+            StatusCode::BAD_REQUEST,
+            anyhow::anyhow!("ZKPassport verification failed: {}", root_cause),
+        ));
+    }
+
+    let tx_hash = res.unwrap();
+    
+    // Return the transaction hash for the frontend to track
+    Ok(Json(serde_json::json!({
+        "tx_hash": tx_hash,
+        "status": "submitted",
+        "message": "ZKPassport verification submitted to Hyli network"
+    })))
 }

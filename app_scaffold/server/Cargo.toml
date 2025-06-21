@@ -8,6 +8,7 @@ client-sdk = { workspace = true, features = ["risc0", "rest"] }
 hyle-modules = { workspace = true }
 contract1 = { workspace = true, features = ["client"] }
 contract2 = { workspace = true, features = ["client"] }
+zkpassport = { workspace = true, features = ["client"] }
 # Remove features if you want reproducible builds with docker
 contracts = { workspace = true, features = ["nonreproducible"] }
 

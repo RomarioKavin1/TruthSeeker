@@ -6976,6 +6976,7 @@ dependencies = [
  "utoipa",
  "utoipa-axum",
  "zip 2.3.0",
+ "zkpassport",
 ]
 
 [[package]]
