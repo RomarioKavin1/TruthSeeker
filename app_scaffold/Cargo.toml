@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts", "contracts/contract1", "contracts/contract2", "server"]
+members = ["contracts", "contracts/contract1", "contracts/contract2", "contracts/zkpassport", "server"]
 
 [workspace.dependencies]
 sdk = { git = "https://github.com/Hyle-org/hyle.git", package = "hyle-contract-sdk", tag = "v0.13.0" }
@@ -11,6 +11,7 @@ hyle-modules = { git = "https://github.com/Hyle-org/hyle.git", package = "hyle-m
 contracts = { path = "contracts", default-features = false, package = "contracts" }
 contract1 = { path = "contracts/contract1", package = "contract1" }
 contract2 = { path = "contracts/contract2", package = "contract2" }
+zkpassport = { path = "contracts/zkpassport", package = "zkpassport" }
 
 [workspace.package]
 version = "0.4.1"

@@ -11,6 +11,9 @@ mod metadata {
 
     pub const CONTRACT2_ELF: &[u8] = crate::methods::CONTRACT2_ELF;
     pub const CONTRACT2_ID: [u8; 32] = sdk::to_u8_array(&crate::methods::CONTRACT2_ID);
+
+    pub const ZKPASSPORT_ELF: &[u8] = crate::methods::ZKPASSPORT_ELF;
+    pub const ZKPASSPORT_ID: [u8; 32] = sdk::to_u8_array(&crate::methods::ZKPASSPORT_ID);
 }
 
 #[cfg(any(clippy, not(feature = "nonreproducible")))]
@@ -22,6 +25,10 @@ mod metadata {
     pub const CONTRACT2_ELF: &[u8] =
         contract2::client::tx_executor_handler::metadata::CONTRACT2_ELF;
     pub const CONTRACT2_ID: [u8; 32] = contract2::client::tx_executor_handler::metadata::PROGRAM_ID;
+
+    // Fix these lines:
+    pub const ZKPASSPORT_ELF: &[u8] = zkpassport::client::tx_executor_handler::metadata::ZKPASSPORT_ELF;
+    pub const ZKPASSPORT_ID: [u8; 32] = zkpassport::client::tx_executor_handler::metadata::PROGRAM_ID;
 }
 
 pub use metadata::*;

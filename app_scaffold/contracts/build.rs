@@ -4,16 +4,16 @@ fn main() {}
 
 #[cfg(all(
     feature = "build",
-    not(any(feature = "contract1", feature = "contract2"))
+    not(any(feature = "contract1", feature = "contract2", feature = "zkpassport"))
 ))]
 fn main() {
-    compile_error!("When the 'build' feature is enabled, at least one of the following features must also be enabled: all, contract1, contract2.");
+    compile_error!("When the 'build' feature is enabled, at least one of the following features must also be enabled: all, contract1, contract2, zkpassport.");
 }
 
 #[cfg(all(
     not(clippy),
     feature = "build",
-    any(feature = "contract1", feature = "contract2",)
+    any(feature = "contract1", feature = "contract2", feature = "zkpassport")
 ))]
 fn main() {
     trait CodegenConsts {
@@ -64,6 +64,8 @@ fn main() {
         "contract1",
         #[cfg(feature = "contract2")]
         "contract2",
+        #[cfg(feature = "zkpassport")]
+        "zkpassport",
     ]
     .iter()
     .map(|name| {

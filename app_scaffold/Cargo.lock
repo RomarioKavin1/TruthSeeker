@@ -2450,6 +2450,7 @@ dependencies = [
  "contract2",
  "hyle-contract-sdk",
  "risc0-build",
+ "zkpassport",
 ]
 
 [[package]]
@@ -8738,6 +8739,22 @@ dependencies = [
  "indexmap 2.9.0",
  "memchr",
  "zopfli",
+]
+
+[[package]]
+name = "zkpassport"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "borsh",
+ "clap",
+ "hyle-client-sdk",
+ "hyle-contract-sdk",
+ "risc0-zkvm",
+ "serde",
+ "tokio",
+ "tracing-subscriber 0.3.19",
+ "zkpassport",
 ]
 
 [[package]]
