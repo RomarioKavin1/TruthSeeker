@@ -1,0 +1,6 @@
+.venv
+/tmp/*
+.env
+*.mov
+*.mp4
+keys
