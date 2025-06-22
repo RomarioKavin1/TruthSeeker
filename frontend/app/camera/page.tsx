@@ -207,7 +207,7 @@ export default function CameraPage() {
             stream.getTracks().forEach((track) => track.stop());
           }
 
-          router.push(`/proof-process?tier=${tier}`);
+          router.push(`/proof-process?tier=${tier}&from=camera`);
         };
         reader.readAsDataURL(videoBlob);
       };

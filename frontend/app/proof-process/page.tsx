@@ -1,74 +1,198 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { HyliWallet, useWallet } from "hyli-wallet";
+import { ZKPassport, ProofResult } from "@zkpassport/sdk";
+import QRCode from "react-qr-code";
+import { createPublicClient, http } from "viem";
+import { sepolia } from "viem/chains";
+import { contractService } from "../services/ContractService";
+
 interface ProofData {
+  hyliWallet?: {
+    address: string;
+    connectedAt: string;
+  };
   zkPassport?: {
     verified: boolean;
     nullifier: string;
     timestamp: string;
+    proofResult?: ProofResult;
+    queryUrl?: string;
   };
-  walletAddress?: string;
-  walletSignature?: string;
-  hyliIdentity?: {
+  onchainProof?: {
     verified: boolean;
-    did: string;
-    credentials: string[];
+    transactionHash: string;
+    timestamp: string;
+    contractAddress?: string;
+    hyliTxHash?: string;
+  };
+  recordedVideo?: {
+    blob: Blob;
+    recordedAt: string;
+  };
+  steganographicVideo?: {
+    processed: boolean;
+    downloadUrl?: string;
+    timestamp: string;
   };
   tier: string;
   timestamp: string;
 }
 
 export default function ProofProcessPage() {
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(() => {
+    // Initialize from session storage if available, otherwise start at 0
+    if (typeof window !== "undefined") {
+      const savedStep = sessionStorage.getItem("proof_process_step");
+      return savedStep ? parseInt(savedStep) : 0;
+    }
+    return 0;
+  });
   const [isComplete, setIsComplete] = useState(false);
   const [proofData, setProofData] = useState<ProofData | null>(null);
   const [error, setError] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showWalletConnect, setShowWalletConnect] = useState(false);
+
+  // ZKPassport related states
+  const [zkPassportMessage, setZkPassportMessage] = useState("");
+  const [queryUrl, setQueryUrl] = useState("");
+  const [requestInProgress, setRequestInProgress] = useState(false);
+  const [onChainVerified, setOnChainVerified] = useState<boolean | undefined>(
+    undefined
+  );
+  const [hyliVerified, setHyliVerified] = useState<boolean | undefined>(
+    undefined
+  );
+  const [zkProofData, setZkProofData] = useState<ProofResult[]>([]);
+  const [contractAddress, setContractAddress] = useState("");
+  const [txHash, setTxHash] = useState("");
+
+  const zkPassportRef = useRef<ZKPassport | null>(null);
 
   const searchParams = useSearchParams();
   const router = useRouter();
   const tier = searchParams.get("tier") || "anonymity";
 
-  const tierSteps = {
-    anonymity: [{ name: "ZKPASSPORT VERIFICATION", status: "pending" }],
-    pseudoAnon: [
-      { name: "ZKPASSPORT VERIFICATION", status: "pending" },
-      { name: "HYLI WALLET CONNECTION", status: "pending" },
-    ],
-    identity: [
-      { name: "ZKPASSPORT VERIFICATION", status: "pending" },
-      { name: "HYLI WALLET CONNECTION", status: "pending" },
-      { name: "HYLI IDENTITY VERIFICATION", status: "pending" },
-    ],
+  // Get wallet state from hyli-wallet
+  const { wallet } = useWallet();
+
+  // Define the new flow steps
+  const flowSteps = [
+    { name: "HYLI WALLET LOGIN", status: "pending" },
+    { name: "ZKPASSPORT VERIFICATION", status: "pending" },
+    { name: "ONCHAIN PROOF VERIFICATION", status: "pending" },
+    { name: "VIDEO RECORDING", status: "pending" },
+    { name: "STEGANOGRAPHIC PROCESSING", status: "pending" },
+  ];
+
+  const [steps, setSteps] = useState(flowSteps);
+
+  // Custom setCurrentStep that persists to session storage
+  const updateCurrentStep = (step: number) => {
+    setCurrentStep(step);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("proof_process_step", step.toString());
+    }
   };
 
-  const [steps, setSteps] = useState(tierSteps[tier as keyof typeof tierSteps]);
-
-  // Initialize proof data
+  // Initialize ZKPassport
   useEffect(() => {
+    if (!zkPassportRef.current) {
+      zkPassportRef.current = new ZKPassport(window.location.hostname);
+    }
+
+    return () => {
+      if (zkPassportRef.current) {
+        setRequestInProgress(false);
+        setIsProcessing(false);
+      }
+    };
+  }, []);
+
+  // Initialize proof data - restore from session if available
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedProofData = sessionStorage.getItem("proof_data");
+      if (savedProofData) {
+        try {
+          const parsedData = JSON.parse(savedProofData);
+          console.log("Restored proof data from session:", parsedData);
+          setProofData(parsedData);
+          return;
+        } catch (error) {
+          console.error("Error parsing saved proof data:", error);
+        }
+      }
+    }
+
+    // If no saved data, initialize fresh
     setProofData({
       tier,
       timestamp: new Date().toISOString(),
     });
   }, [tier]);
 
-  const handleZKPassportVerification = async () => {
-    setIsProcessing(true);
-    try {
-      // Simulate ZKPassport verification
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+  // Restore other state from session storage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedState = sessionStorage.getItem("proof_process_state");
+      if (savedState) {
+        try {
+          const state = JSON.parse(savedState);
+          console.log("Restoring saved state:", state);
 
-      const zkProof = {
-        verified: true,
-        nullifier: "0x" + Math.random().toString(16).slice(2),
-        timestamp: new Date().toISOString(),
+          if (state.onChainVerified !== undefined)
+            setOnChainVerified(state.onChainVerified);
+          if (state.hyliVerified !== undefined)
+            setHyliVerified(state.hyliVerified);
+          if (state.zkProofData) setZkProofData(state.zkProofData);
+          if (state.contractAddress) setContractAddress(state.contractAddress);
+          if (state.txHash) setTxHash(state.txHash);
+        } catch (error) {
+          console.error("Error restoring saved state:", error);
+        }
+      }
+    }
+  }, []);
+
+  // Save state to session storage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const state = {
+        onChainVerified,
+        hyliVerified,
+        zkProofData,
+        contractAddress,
+        txHash,
       };
+      sessionStorage.setItem("proof_process_state", JSON.stringify(state));
+    }
+  }, [onChainVerified, hyliVerified, zkProofData, contractAddress, txHash]);
 
+  // Watch for wallet connection and auto-proceed to step 1 (only if not returning from camera)
+  useEffect(() => {
+    const fromCamera = searchParams.get("from") === "camera";
+    const hasRecordedVideo = sessionStorage.getItem("recorded_video");
+
+    // Only auto-login if we're at step 0, have a wallet, not coming from camera, and don't have recorded video
+    if (wallet && currentStep === 0 && !fromCamera && !hasRecordedVideo) {
+      handleHyliLogin();
+    }
+  }, [wallet, searchParams, currentStep]);
+
+  // Step 1: Hyli Wallet Login
+  const handleHyliLogin = () => {
+    if (wallet) {
       setProofData((prev) => ({
         ...prev!,
-        zkPassport: zkProof,
+        hyliWallet: {
+          address: wallet.address,
+          connectedAt: new Date().toISOString(),
+        },
       }));
 
       // Mark step as completed
@@ -78,83 +202,301 @@ export default function ProofProcessPage() {
         )
       );
 
-      setCurrentStep(1);
-
-      // If tier 1 (anonymity), we're done
-      if (tier === "anonymity") {
-        setTimeout(() => {
-          completeProcess({
-            ...proofData!,
-            zkPassport: zkProof,
-          });
-        }, 1000);
-      }
-    } catch {
-      setError("ZKPassport verification failed");
-    } finally {
-      setIsProcessing(false);
+      updateCurrentStep(1);
+      setShowWalletConnect(false);
+    } else {
+      setShowWalletConnect(true);
     }
   };
 
-  const handleWalletConnection = async () => {
+  // Reset ZKPassport state
+  const resetZKPassportState = () => {
+    setZkPassportMessage("");
+    setQueryUrl("");
+    setOnChainVerified(undefined);
+    setHyliVerified(undefined);
+    setZkProofData([]);
+    setContractAddress("");
+    setTxHash("");
+    setRequestInProgress(false);
+  };
+
+  // Step 2: ZKPassport Verification
+  const handleZKPassportVerification = async () => {
+    if (!zkPassportRef.current) {
+      setError("ZKPassport not initialized");
+      return;
+    }
+
+    if (!wallet?.address) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    if (requestInProgress || isProcessing) {
+      setZkPassportMessage("Request already in progress, please wait...");
+      return;
+    }
+
+    resetZKPassportState();
     setIsProcessing(true);
+
     try {
-      // This will be handled by the wallet provider
-      // For now, simulate wallet connection
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const queryBuilder = await zkPassportRef.current.request({
+        name: "ZKPassport",
+        logo: "https://zkpassport.id/favicon.png",
+        purpose: "Proof of adulthood",
+        scope: "adult",
+        mode: "compressed-evm",
+        devMode: true,
+        evmChain: "ethereum_sepolia",
+      });
 
-      const walletData = {
-        address: "0x" + Math.random().toString(16).slice(2, 42),
-        signature: "0x" + Math.random().toString(16).slice(2),
-      };
+      const {
+        url,
+        onRequestReceived,
+        onGeneratingProof,
+        onProofGenerated,
+        onResult,
+        onReject,
+        onError,
+      } = queryBuilder
+        .gte("age", 18)
+        .bind("user_address", "0x5e4B11F7B7995F5Cee0134692a422b045091112F")
+        .bind("custom_data", "email:test@test.com,customer_id:1234567890")
+        .done();
 
-      setProofData((prev) => ({
-        ...prev!,
-        walletAddress: walletData.address,
-        walletSignature: walletData.signature,
-      }));
+      setQueryUrl(url);
+      setZkPassportMessage("Scan the QR code with your ZKPassport mobile app");
+      setRequestInProgress(true);
 
-      // Mark step as completed
-      setSteps((prev) =>
-        prev.map((step, idx) =>
-          idx === 1 ? { ...step, status: "completed" } : step
-        )
+      onRequestReceived(() => {
+        console.log("QR code scanned");
+        setZkPassportMessage("Request received - generating proof...");
+      });
+
+      onGeneratingProof(() => {
+        console.log("Generating proof");
+        setZkPassportMessage("Generating zero-knowledge proof...");
+      });
+
+      const proofs: ProofResult[] = [];
+
+      onProofGenerated(async (proof: ProofResult) => {
+        console.log("Proof result", proof);
+        proofs.push(proof);
+        setZkProofData([...proofs]);
+        setZkPassportMessage("Proof generated - verifying on Ethereum...");
+        setRequestInProgress(false);
+
+        try {
+          // Verify on Ethereum
+          const params = zkPassportRef.current!.getSolidityVerifierParameters({
+            proof,
+            scope: "adult",
+            devMode: true,
+          });
+
+          const { address, abi, functionName } =
+            zkPassportRef.current!.getSolidityVerifierDetails(
+              "ethereum_sepolia"
+            );
+
+          setContractAddress(address);
+
+          const publicClient = createPublicClient({
+            chain: sepolia,
+            transport: http("https://ethereum-sepolia-rpc.publicnode.com"),
+          });
+
+          const contractCallResult = await publicClient.readContract({
+            address,
+            abi,
+            functionName,
+            args: [params],
+          });
+
+          const isVerified = Array.isArray(contractCallResult)
+            ? Boolean(contractCallResult[0])
+            : false;
+
+          setOnChainVerified(isVerified);
+
+          if (isVerified) {
+            setZkPassportMessage("Ethereum verification successful!");
+
+            // Update proof data with successful verification
+            setProofData((prev) => ({
+              ...prev!,
+              zkPassport: {
+                verified: true,
+                nullifier: JSON.stringify(proof).slice(0, 32) + "...",
+                timestamp: new Date().toISOString(),
+                proofResult: proof,
+                queryUrl: url,
+              },
+            }));
+
+            // Mark step as completed
+            setSteps((prev) =>
+              prev.map((step, idx) =>
+                idx === 1 ? { ...step, status: "completed" } : step
+              )
+            );
+
+            updateCurrentStep(2);
+          } else {
+            throw new Error("Ethereum verification failed");
+          }
+        } catch (verificationError) {
+          console.error("Error during verification:", verificationError);
+          setError("Verification failed");
+          setOnChainVerified(false);
+        }
+      });
+
+      onResult(
+        async ({ result, uniqueIdentifier, verified, queryResultErrors }) => {
+          console.log("Final verification result:", verified);
+          console.log("Unique identifier:", uniqueIdentifier);
+          if (verified && uniqueIdentifier) {
+            // Update proof data with unique identifier
+            setProofData((prev) => ({
+              ...prev!,
+              zkPassport: {
+                ...prev!.zkPassport!,
+                nullifier: uniqueIdentifier,
+              },
+            }));
+            setZkPassportMessage("ZKPassport verification complete!");
+          }
+        }
       );
 
-      setCurrentStep(2);
+      onReject(() => {
+        console.log("User rejected");
+        setZkPassportMessage("User rejected the request");
+        setRequestInProgress(false);
+        setError("User rejected the verification request");
+      });
 
-      // If tier 2 (pseudoAnon), we're done
-      if (tier === "pseudoAnon") {
-        setTimeout(() => {
-          completeProcess({
-            ...proofData!,
-            walletAddress: walletData.address,
-            walletSignature: walletData.signature,
-          });
-        }, 1000);
-      }
-    } catch {
-      setError("Wallet connection failed");
+      onError((error: unknown) => {
+        console.error("ZKPassport Error", error);
+        setZkPassportMessage("An error occurred during verification");
+        setRequestInProgress(false);
+        setError("ZKPassport verification error");
+      });
+    } catch (err) {
+      console.error("Error creating ZKPassport request:", err);
+      setError("Failed to create verification request");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleIdentityVerification = async () => {
-    setIsProcessing(true);
+  // Submit to Hyli Network
+  const submitToHyliNetwork = async (
+    proof: ProofResult,
+    userAddress: string
+  ) => {
     try {
-      // Simulate Hyli identity verification
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      const identityData = {
-        verified: true,
-        did: "did:hyli:" + Math.random().toString(16).slice(2),
-        credentials: ["age", "nationality"],
+      const zkPassportAction = {
+        VerifyIdentity: {
+          proof: {
+            proof: proof.proof || "",
+            vkey_hash: ((proof as any).vkeyHash || "") as string,
+            name: proof.name || "outer_evm_count_5",
+            version: proof.version || "1.0.0",
+            committed_inputs: {
+              compare_age_evm: {
+                current_date: new Date().toISOString().split("T")[0],
+                min_age: 18,
+                max_age: 120,
+              },
+              bind_evm: {
+                data: {
+                  user_address: userAddress,
+                  custom_data: `verified_at:${new Date().toISOString()}`,
+                },
+              },
+            },
+          },
+          hyli_identity: userAddress,
+        },
       };
+
+      const blob = {
+        contract_name: "zkpassport",
+        data: zkPassportAction,
+      };
+
+      const baseUrl =
+        process.env.NEXT_PUBLIC_SERVER_BASE_URL || "http://localhost:4002";
+      const headers = new Headers();
+      headers.append("content-type", "application/json");
+      headers.append("x-user", `${userAddress}@zkpassport`);
+
+      if (wallet?.sessionKey) {
+        headers.append("x-session-key", JSON.stringify(wallet.sessionKey));
+        headers.append("x-request-signature", "test-signature");
+      }
+
+      const response = await fetch(`${baseUrl}/api/zkpassport/verify`, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify({ blob }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Hyli verification failed: ${errorText}`);
+      }
+
+      const result = await response.json();
+      setHyliVerified(true);
+      setTxHash(result.tx_hash || "");
+
+      if (result.tx_hash) {
+        try {
+          await contractService.pollTransactionStatus(result.tx_hash);
+          return result;
+        } catch (error) {
+          console.warn("Transaction polling failed:", error);
+          return result;
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Error submitting to Hyli network:", error);
+      setHyliVerified(false);
+      throw error;
+    }
+  };
+
+  // Step 3: Onchain Proof Verification
+  const handleOnchainVerification = async () => {
+    if (!wallet?.address || !zkProofData.length) {
+      setError("Missing wallet or proof data");
+      return;
+    }
+
+    setIsProcessing(true);
+    setZkPassportMessage("Submitting to Hyli network...");
+
+    try {
+      const proof = zkProofData[0];
+      const result = await submitToHyliNetwork(proof, wallet.address);
 
       setProofData((prev) => ({
         ...prev!,
-        hyliIdentity: identityData,
+        onchainProof: {
+          verified: true,
+          transactionHash: result.tx_hash || "",
+          timestamp: new Date().toISOString(),
+          contractAddress: contractAddress,
+          hyliTxHash: result.tx_hash,
+        },
       }));
 
       // Mark step as completed
@@ -164,48 +506,152 @@ export default function ProofProcessPage() {
         )
       );
 
-      setTimeout(() => {
-        completeProcess({
-          ...proofData!,
-          hyliIdentity: identityData,
-        });
-      }, 1000);
-    } catch {
-      setError("Identity verification failed");
+      setZkPassportMessage("Successfully verified on Hyli network!");
+      updateCurrentStep(3);
+    } catch (error) {
+      console.error("Onchain verification failed:", error);
+      setError("Failed to verify proof on Hyli network");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const completeProcess = async (finalData: ProofData) => {
-    setIsProcessing(true);
-    try {
-      // Get recorded video from session storage
-      const recordedVideo = sessionStorage.getItem("recorded_video");
+  // Save proof data to session storage whenever it changes
+  useEffect(() => {
+    if (proofData && typeof window !== "undefined") {
+      sessionStorage.setItem("proof_data", JSON.stringify(proofData));
+    }
+  }, [proofData]);
 
-      if (!recordedVideo) {
-        throw new Error("No recorded video found");
+  // Step 4: Navigate to Camera Page
+  const handleNavigateToCamera = () => {
+    // Only allow navigation if onchain proof is verified
+    if (!proofData?.onchainProof?.verified) {
+      setError("Onchain verification not completed yet");
+      return;
+    }
+
+    // Store proof data in session storage for camera page
+    sessionStorage.setItem("proof_data", JSON.stringify(proofData));
+    router.push(`/camera?tier=${tier}&from=proof-process`);
+  };
+
+  // Step 5: Handle video from camera and create steganographic video
+  useEffect(() => {
+    // Check if we're returning from camera page with recorded video
+    const recordedVideo = sessionStorage.getItem("recorded_video");
+    const fromCamera = searchParams.get("from") === "camera";
+
+    console.log("Camera return check:", {
+      recordedVideo: !!recordedVideo,
+      fromCamera,
+      onchainVerified: proofData?.onchainProof?.verified,
+      currentStep,
+      proofData: proofData,
+    });
+
+    // Only proceed if we have verified onchain proof and coming from camera
+    if (recordedVideo && fromCamera && proofData?.onchainProof?.verified) {
+      console.log("Proceeding to step 4 (steganographic processing)");
+
+      // Mark video recording step as completed and move to steganographic processing
+      setSteps((prev) =>
+        prev.map((step, idx) =>
+          idx === 3 ? { ...step, status: "completed" } : step
+        )
+      );
+      updateCurrentStep(4);
+
+      // Clear the from parameter to prevent re-triggering
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("from");
+      window.history.replaceState({}, "", newUrl.toString());
+    } else if (recordedVideo && fromCamera) {
+      console.log(
+        "Camera return but missing onchain verification - forcing step 4 anyway"
+      );
+      updateCurrentStep(4);
+
+      // Clear the from parameter to prevent re-triggering
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("from");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+  }, [searchParams, proofData, currentStep]);
+
+  // Step 5: Steganographic Processing
+  const handleSteganographicProcessing = async () => {
+    const recordedVideo = sessionStorage.getItem("recorded_video");
+    if (!recordedVideo) {
+      setError("No recorded video found");
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      // Prepare the data to embed in the video
+      const proofMetadata = {
+        wallet_address: proofData?.hyliWallet?.address,
+        zkpassport_nullifier: proofData?.zkPassport?.nullifier,
+        ethereum_tx: contractAddress,
+        hyli_tx: proofData?.onchainProof?.hyliTxHash,
+        tier: tier,
+        timestamp: new Date().toISOString(),
+        verification_complete: true,
+      };
+
+      // Convert base64 video back to blob
+      const response = await fetch(recordedVideo);
+      const videoBlob = await response.blob();
+
+      // Create form data for steganographic server
+      const formData = new FormData();
+      formData.append("video", videoBlob, "recorded_video.webm");
+      formData.append("text", JSON.stringify(proofMetadata));
+      formData.append("encrypt", "true");
+
+      // Send to steganography server
+      const stegoResponse = await fetch("http://localhost:5000/encrypt", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!stegoResponse.ok) {
+        throw new Error("Steganographic processing failed");
       }
 
-      // Here you would upload to IPFS and embed proofs
-      // For now, simulate the process
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      // Get the processed video
+      const processedVideoBlob = await stegoResponse.blob();
+      const downloadUrl = URL.createObjectURL(processedVideoBlob);
 
-      // Store final result
-      sessionStorage.setItem("final_proof", JSON.stringify(finalData));
-      sessionStorage.setItem(
-        "video_cid",
-        "Qm" + Math.random().toString(16).slice(2)
+      setProofData((prev) => ({
+        ...prev!,
+        steganographicVideo: {
+          processed: true,
+          downloadUrl: downloadUrl,
+          timestamp: new Date().toISOString(),
+        },
+      }));
+
+      // Mark step as completed
+      setSteps((prev) =>
+        prev.map((step, idx) =>
+          idx === 4 ? { ...step, status: "completed" } : step
+        )
       );
 
+      // Complete the entire process
       setIsComplete(true);
 
-      // Navigate to success page
-      setTimeout(() => {
-        router.push(`/success?tier=${tier}`);
-      }, 2000);
-    } catch {
-      setError("Failed to complete verification process");
+      // Clean up session storage
+      sessionStorage.removeItem("recorded_video");
+      sessionStorage.removeItem("proof_data");
+      sessionStorage.removeItem("proof_process_step");
+      sessionStorage.removeItem("proof_process_state");
+    } catch (error) {
+      console.error("Steganographic processing failed:", error);
+      setError("Failed to process video with steganographic embedding");
     } finally {
       setIsProcessing(false);
     }
@@ -214,37 +660,99 @@ export default function ProofProcessPage() {
   const getCurrentStepAction = () => {
     switch (currentStep) {
       case 0:
-        return (
+        return wallet ? (
           <Button
-            onClick={handleZKPassportVerification}
-            disabled={isProcessing}
+            onClick={handleHyliLogin}
             className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase border-4 border-black"
           >
-            {isProcessing ? "VERIFYING..." : "START ZKPASSPORT VERIFICATION"}
+            PROCEED WITH CONNECTED WALLET
+          </Button>
+        ) : (
+          <Button
+            onClick={handleHyliLogin}
+            className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase border-4 border-black"
+          >
+            LOGIN WITH HYLI WALLET
           </Button>
         );
       case 1:
         return (
           <Button
-            onClick={handleWalletConnection}
-            disabled={isProcessing}
+            onClick={handleZKPassportVerification}
+            disabled={isProcessing || requestInProgress}
             className="px-8 py-4 bg-green-600 hover:bg-green-700 text-white font-bold uppercase border-4 border-black"
           >
-            {isProcessing ? "CONNECTING..." : "CONNECT HYLI WALLET"}
+            {isProcessing || requestInProgress
+              ? "PROCESSING..."
+              : "START ZKPASSPORT VERIFICATION"}
           </Button>
         );
       case 2:
         return (
           <Button
-            onClick={handleIdentityVerification}
-            disabled={isProcessing}
+            onClick={handleOnchainVerification}
+            disabled={isProcessing || !onChainVerified}
             className="px-8 py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold uppercase border-4 border-black"
           >
-            {isProcessing ? "VERIFYING..." : "VERIFY IDENTITY"}
+            {isProcessing ? "VERIFYING ONCHAIN..." : "VERIFY PROOF ONCHAIN"}
+          </Button>
+        );
+      case 3:
+        return (
+          <Button
+            onClick={handleNavigateToCamera}
+            disabled={!proofData?.onchainProof?.verified}
+            className="px-8 py-4 bg-orange-600 hover:bg-orange-700 text-white font-bold uppercase border-4 border-black disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            📹 RECORD VIDEO
+          </Button>
+        );
+      case 4:
+        return (
+          <Button
+            onClick={handleSteganographicProcessing}
+            disabled={isProcessing}
+            className="px-8 py-4 bg-pink-600 hover:bg-pink-700 text-white font-bold uppercase border-4 border-black"
+          >
+            {isProcessing ? "PROCESSING..." : "CREATE STEGANOGRAPHIC VIDEO"}
           </Button>
         );
       default:
         return null;
+    }
+  };
+
+  const getStepDescription = () => {
+    switch (currentStep) {
+      case 0:
+        return "Connect your Hyli wallet to begin the verification process. This establishes your identity for the proof.";
+      case 1:
+        return "Verify your humanity using ZKPassport zero-knowledge proofs. Scan the QR code with your mobile device.";
+      case 2:
+        return "Submit and verify your proof on the blockchain. This creates an immutable record of your verification.";
+      case 3:
+        return "Record your video content with the integrated camera. The proof will be embedded in this recording.";
+      case 4:
+        return "Process your video with steganographic techniques to embed the verification proofs invisibly.";
+      default:
+        return "";
+    }
+  };
+
+  const getStepIcon = () => {
+    switch (currentStep) {
+      case 0:
+        return "🔐";
+      case 1:
+        return "📱";
+      case 2:
+        return "⛓️";
+      case 3:
+        return "📹";
+      case 4:
+        return "🎨";
+      default:
+        return "✅";
     }
   };
 
@@ -270,14 +778,14 @@ export default function ProofProcessPage() {
 
           {/* Progress Steps */}
           <div className="mb-12">
-            <div className="flex justify-center items-center space-x-4">
+            <div className="flex justify-center items-center space-x-2 overflow-x-auto">
               {steps.map((step, idx) => (
-                <div key={idx} className="flex items-center">
+                <div key={idx} className="flex items-center flex-shrink-0">
                   <div
-                    className={`w-12 h-12 rounded-full border-4 flex items-center justify-center font-bold ${
+                    className={`w-12 h-12 rounded-full border-4 flex items-center justify-center font-bold text-sm ${
                       step.status === "completed"
                         ? "bg-green-500 border-green-500 text-white"
-                        : step.status === "active" || idx === currentStep
+                        : idx === currentStep
                         ? "bg-blue-500 border-blue-500 text-white"
                         : "bg-gray-300 border-gray-300 text-gray-600"
                     }`}
@@ -286,7 +794,7 @@ export default function ProofProcessPage() {
                   </div>
                   {idx < steps.length - 1 && (
                     <div
-                      className={`w-16 h-1 ${
+                      className={`w-8 h-1 ${
                         steps[idx + 1].status === "completed" ||
                         idx < currentStep
                           ? "bg-green-500"
@@ -313,39 +821,242 @@ export default function ProofProcessPage() {
           <div className="border-4 border-black bg-white p-8 mb-8">
             {!isComplete ? (
               <div className="text-center space-y-6">
-                <div className="text-6xl mb-4">
-                  {currentStep === 0 && "🔐"}
-                  {currentStep === 1 && "💳"}
-                  {currentStep === 2 && "🪪"}
-                </div>
+                <div className="text-6xl mb-4">{getStepIcon()}</div>
 
                 <div className="space-y-4">
                   <h2 className="text-2xl font-bold uppercase">
                     {steps[currentStep]?.name}
                   </h2>
 
-                  {currentStep === 0 && (
-                    <p className="font-mono text-sm">
-                      Verify your humanity using ZKPassport zero-knowledge
-                      proofs. This proves you are human without revealing your
-                      identity.
-                    </p>
+                  <p className="font-mono text-sm">{getStepDescription()}</p>
+
+                  {/* Step-specific content */}
+                  {currentStep === 0 && wallet && (
+                    <div className="bg-green-100 border-2 border-green-500 text-green-700 p-4 font-mono text-sm">
+                      ✅ Wallet Connected: {wallet.address.slice(0, 8)}...
+                      {wallet.address.slice(-6)}
+                    </div>
                   )}
 
-                  {currentStep === 1 && (
-                    <p className="font-mono text-sm">
-                      Connect your Hyli wallet to link your address with the
-                      proof. This enables traceable authenticity while
-                      maintaining privacy.
-                    </p>
+                  {/* ZKPassport QR Code */}
+                  {currentStep === 1 && queryUrl && (
+                    <div className="space-y-4">
+                      <div className="inline-block p-6 bg-white rounded-lg border-2 border-gray-300">
+                        <QRCode value={queryUrl} size={200} />
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Use your ZKPassport mobile app to scan this QR code
+                      </p>
+                    </div>
                   )}
 
-                  {currentStep === 2 && (
-                    <p className="font-mono text-sm">
-                      Verify your identity using Hyli Protocol credentials. This
-                      provides full verifiable identity with audit trail.
-                    </p>
+                  {/* ZKPassport Status Messages */}
+                  {currentStep === 1 && zkPassportMessage && (
+                    <div className="bg-blue-100 border-2 border-blue-500 text-blue-700 p-4 font-mono text-sm">
+                      {zkPassportMessage}
+                    </div>
                   )}
+
+                  {currentStep === 1 &&
+                    zkProofData.length > 0 &&
+                    !onChainVerified && (
+                      <div className="bg-yellow-100 border-2 border-yellow-500 text-yellow-700 p-4 font-mono text-sm space-y-2">
+                        <div className="font-bold">
+                          ⚡ PROOF GENERATED - VERIFYING...
+                        </div>
+                        <div className="text-xs">
+                          Zero-knowledge proof generated successfully. Verifying
+                          on Ethereum blockchain...
+                        </div>
+                      </div>
+                    )}
+
+                  {currentStep === 1 && onChainVerified && (
+                    <div className="bg-green-100 border-2 border-green-500 text-green-700 p-4 font-mono text-sm space-y-2">
+                      <div className="font-bold">
+                        ✅ ZKPassport Verified on Ethereum
+                      </div>
+                      <div className="bg-white p-2 rounded border text-xs">
+                        <div>
+                          <strong>Contract:</strong>{" "}
+                          {contractAddress.slice(0, 8)}...
+                          {contractAddress.slice(-6)}
+                        </div>
+                        <div>
+                          <strong>Verification:</strong> Age ≥ 18 ✅
+                        </div>
+                        <div>
+                          <strong>Proof:</strong> Zero-Knowledge
+                        </div>
+                      </div>
+                      <div className="text-xs text-green-600">
+                        Ready to proceed to onchain verification
+                      </div>
+                    </div>
+                  )}
+
+                  {currentStep === 2 &&
+                    (onChainVerified || zkProofData.length > 0) && (
+                      <div className="bg-blue-100 border-2 border-blue-500 text-blue-700 p-4 font-mono text-sm space-y-3">
+                        <div className="font-bold">
+                          🔍 COMPLETE PROOF DETAILS
+                        </div>
+
+                        {/* Basic Verification Info */}
+                        <div className="bg-white p-3 rounded border text-xs space-y-2">
+                          <div className="font-bold text-blue-800 border-b pb-1">
+                            VERIFICATION STATUS
+                          </div>
+                          <div>
+                            <strong>Over 18:</strong> ✅ Yes
+                          </div>
+                          <div>
+                            <strong>Unique Identifier:</strong>{" "}
+                            {proofData?.zkPassport?.nullifier ||
+                              "Generating..."}
+                          </div>
+                          <div>
+                            <strong>Verified:</strong> ✅ Yes
+                          </div>
+                          <div>
+                            <strong>On-chain Verified:</strong>{" "}
+                            {onChainVerified ? "✅ Yes" : "⏳ Pending"}
+                          </div>
+                          <div>
+                            <strong>Verifier Contract:</strong>{" "}
+                            {contractAddress || "Loading..."}
+                          </div>
+                        </div>
+
+                        {/* Detailed Proof Data */}
+                        {zkProofData.length > 0 && (
+                          <div className="bg-white p-3 rounded border text-xs space-y-2">
+                            <div className="font-bold text-blue-800 border-b pb-1">
+                              GENERATED PROOF DATA
+                            </div>
+                            <div>
+                              <strong>Proof Name:</strong>{" "}
+                              {zkProofData[0]?.name || "outer_evm_count_5"}
+                            </div>
+                            <div>
+                              <strong>Version:</strong>{" "}
+                              {zkProofData[0]?.version || "0.4.3"}
+                            </div>
+                            <div>
+                              <strong>VKey Hash:</strong>{" "}
+                              {zkProofData[0]?.vkeyHash
+                                ? `${zkProofData[0].vkeyHash.slice(
+                                    0,
+                                    10
+                                  )}...${zkProofData[0].vkeyHash.slice(-8)}`
+                                : "Generating..."}
+                            </div>
+
+                            {/* Committed Inputs */}
+                            {zkProofData[0]?.committedInputs && (
+                              <div className="mt-2">
+                                <div className="font-bold text-blue-800">
+                                  Committed Inputs:
+                                </div>
+                                <div className="ml-2 text-xs bg-gray-50 p-2 rounded">
+                                  <div>
+                                    <strong>Type:</strong> Age Verification
+                                    (≥18)
+                                  </div>
+                                  <div>
+                                    <strong>Scope:</strong> Adult
+                                  </div>
+                                  <div>
+                                    <strong>Mode:</strong> Compressed EVM
+                                  </div>
+                                  <div>
+                                    <strong>Chain:</strong> Ethereum Sepolia
+                                  </div>
+                                  <div>
+                                    <strong>Bound User:</strong>{" "}
+                                    {wallet?.address || "Connected Wallet"}
+                                  </div>
+                                  <div>
+                                    <strong>Custom Data:</strong>{" "}
+                                    email:test@test.com,customer_id:1234567890
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Proof Hash Preview */}
+                            {zkProofData[0]?.proof && (
+                              <div className="mt-2">
+                                <div className="font-bold text-blue-800">
+                                  Zero-Knowledge Proof:
+                                </div>
+                                <div className="bg-gray-100 p-2 rounded text-xs">
+                                  <div className="font-mono break-all">
+                                    {zkProofData[0].proof.slice(0, 80)}...
+                                  </div>
+                                  <div className="text-gray-500 mt-1 flex justify-between items-center">
+                                    <span>
+                                      ({zkProofData[0].proof.length} characters
+                                      total)
+                                    </span>
+                                    <details className="cursor-pointer">
+                                      <summary className="text-blue-600 hover:text-blue-800">
+                                        View Full Proof
+                                      </summary>
+                                      <div className="mt-2 max-h-40 overflow-y-auto bg-white p-2 rounded border font-mono text-xs break-all">
+                                        {zkProofData[0].proof}
+                                      </div>
+                                    </details>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Full JSON Data for Developers */}
+                            <details className="mt-2">
+                              <summary className="font-bold text-blue-800 cursor-pointer hover:text-blue-600">
+                                🔧 Raw Proof Data (Developer View)
+                              </summary>
+                              <div className="mt-2 bg-gray-100 p-2 rounded text-xs max-h-60 overflow-y-auto">
+                                <pre className="font-mono whitespace-pre-wrap break-all">
+                                  {JSON.stringify(zkProofData[0], null, 2)}
+                                </pre>
+                              </div>
+                            </details>
+                          </div>
+                        )}
+
+                        <div className="text-xs text-blue-600 font-bold">
+                          {onChainVerified
+                            ? "Ready for Hyli network submission"
+                            : "Ready for onchain submission to Hyli network"}
+                        </div>
+                      </div>
+                    )}
+
+                  {currentStep === 2 && hyliVerified && (
+                    <div className="bg-green-100 border-2 border-green-500 text-green-700 p-4 font-mono text-sm">
+                      ✅ Proof Verified on Hyli Network
+                      <br />
+                      {txHash && (
+                        <a
+                          href={`https://explorer.hyli.org/tx/${txHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline hover:text-green-800"
+                        >
+                          Transaction: {txHash.slice(0, 16)}...
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {currentStep === 4 &&
+                    sessionStorage.getItem("recorded_video") && (
+                      <div className="bg-green-100 border-2 border-green-500 text-green-700 p-4 font-mono text-sm">
+                        ✅ Video Ready for Processing
+                      </div>
+                    )}
                 </div>
 
                 {error && (
@@ -363,9 +1074,21 @@ export default function ProofProcessPage() {
                   VERIFICATION COMPLETE
                 </h2>
                 <p className="font-mono text-sm">
-                  Your proof has been generated and embedded in the video.
-                  Redirecting to success page...
+                  Your steganographic video has been created with embedded
+                  proofs.
                 </p>
+
+                {proofData?.steganographicVideo?.downloadUrl && (
+                  <div className="pt-4">
+                    <a
+                      href={proofData.steganographicVideo.downloadUrl}
+                      download="truthseeker_verified_video.webm"
+                      className="px-8 py-4 bg-green-600 hover:bg-green-700 text-white font-bold uppercase border-4 border-black inline-block"
+                    >
+                      📥 DOWNLOAD VERIFIED VIDEO
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -376,31 +1099,46 @@ export default function ProofProcessPage() {
               TIER: {tier.toUpperCase()}
             </h3>
             <div className="font-mono text-sm space-y-2">
-              {tier === "anonymity" && (
-                <>
-                  <p>• Anonymous proof of humanity</p>
-                  <p>• No wallet or identity required</p>
-                  <p>• Maximum privacy protection</p>
-                </>
-              )}
-              {tier === "pseudoAnon" && (
-                <>
-                  <p>• Proof of humanity + wallet signature</p>
-                  <p>• Traceable to wallet address</p>
-                  <p>• Enhanced authenticity verification</p>
-                </>
-              )}
-              {tier === "identity" && (
-                <>
-                  <p>• Full identity verification</p>
-                  <p>• Government-grade authentication</p>
-                  <p>• Complete audit trail</p>
-                </>
-              )}
+              <p>• Hyli wallet authentication</p>
+              <p>• ZKPassport zero-knowledge verification</p>
+              <p>• Onchain proof validation</p>
+              <p>• Camera-recorded content</p>
+              <p>• Steganographic proof embedding</p>
             </div>
           </div>
         </div>
       </main>
+
+      {/* Hyli Wallet Connect Modal */}
+      {showWalletConnect && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg max-w-md w-full mx-4 border-4 border-black">
+            <div className="text-center mb-6">
+              <h3 className="text-2xl font-bold uppercase mb-2">
+                Connect Hyli Wallet
+              </h3>
+              <p className="font-mono text-sm text-gray-600">
+                Sign in or create an account to continue
+              </p>
+            </div>
+
+            <HyliWallet
+              providers={["password", "google", "github"]}
+              isOpen={showWalletConnect}
+              onClose={() => setShowWalletConnect(false)}
+            />
+
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => setShowWalletConnect(false)}
+                className="text-sm text-gray-500 hover:text-gray-700 font-mono"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

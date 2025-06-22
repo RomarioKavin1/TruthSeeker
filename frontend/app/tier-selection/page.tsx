@@ -54,7 +54,9 @@ export default function TierSelectionPage() {
 
           {/* Continue Button - Moved to Top */}
           <div className="text-center mb-12">
-            <Link href={selectedTier ? `/camera?tier=${selectedTier}` : "#"}>
+            <Link
+              href={selectedTier ? `/proof-process?tier=${selectedTier}` : "#"}
+            >
               <Button
                 className={`px-12 py-6 font-bold uppercase text-lg border-4 transition-all duration-300 transform ${
                   selectedTier
@@ -64,7 +66,7 @@ export default function TierSelectionPage() {
                 disabled={!selectedTier}
               >
                 {selectedTier
-                  ? "CONTINUE TO CAMERA"
+                  ? "CONTINUE TO VERIFICATION"
                   : "SELECT TIER TO CONTINUE"}
               </Button>
             </Link>
