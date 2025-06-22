@@ -20,7 +20,7 @@ export default function BackendStatus({
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const response = await fetch("http://localhost:5000/health", {
+        const response = await fetch("http://localhost:5001/health", {
           method: "GET",
         });
         setBackendStatus(response.ok ? "online" : "offline");

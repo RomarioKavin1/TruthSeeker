@@ -82,7 +82,7 @@ export default function SteganographyPage() {
 
       const endpoint = mediaType === "image" ? "/encrypt" : "/encrypt";
       const steganographyUrl =
-        process.env.NEXT_PUBLIC_STEGANOGRAPHY_URL || "http://localhost:5000";
+        process.env.NEXT_PUBLIC_STEGANOGRAPHY_URL || "http://localhost:5001";
 
       const response = await fetch(`${steganographyUrl}${endpoint}`, {
         method: "POST",
@@ -142,7 +142,7 @@ export default function SteganographyPage() {
 
       const endpoint = "/decrypt";
       const steganographyUrl =
-        process.env.NEXT_PUBLIC_STEGANOGRAPHY_URL || "http://localhost:5000";
+        process.env.NEXT_PUBLIC_STEGANOGRAPHY_URL || "http://localhost:5001";
 
       const response = await fetch(`${steganographyUrl}${endpoint}`, {
         method: "POST",

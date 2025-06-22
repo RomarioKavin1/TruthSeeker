@@ -75,7 +75,7 @@ export default function LandingPage() {
                           ANONYMITY
                         </h3>
                         <p className="text-sm text-gray-600 font-mono">
-                          ZKPASSPORT PROOF ONLY
+                          PROOF OF HUMANITY ONLY
                         </p>
                       </div>
                     </div>
@@ -94,7 +94,7 @@ export default function LandingPage() {
                           PSEUDO-ANONYMITY
                         </h3>
                         <p className="text-sm text-gray-600 font-mono">
-                          ADDRESS + PROOF OF HUMANITY
+                          WALLETADDRESS + PROOF OF HUMANITY
                         </p>
                       </div>
                     </div>

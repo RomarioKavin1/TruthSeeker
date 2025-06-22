@@ -681,7 +681,7 @@ export default function ProofProcessPage() {
       formData.append("encrypt", "true");
 
       // Send to steganography server
-      const stegoResponse = await fetch("http://localhost:5000/encrypt", {
+      const stegoResponse = await fetch("http://localhost:5001/encrypt", {
         method: "POST",
         body: formData,
       });
