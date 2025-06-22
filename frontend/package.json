@@ -20,7 +20,6 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-qr-code": "^2.0.16",
-    "react-router-dom": "^7.6.2",
     "tailwind-merge": "^3.3.1",
     "viem": "^2.0.0"
   },

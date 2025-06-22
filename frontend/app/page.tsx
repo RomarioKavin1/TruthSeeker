@@ -24,10 +24,10 @@ export default function LandingPage() {
           </div>
           <nav className="flex gap-4">
             <Link
-              href="/steganography"
+              href="/sandbox"
               className="border-2 border-black bg-white px-4 py-2 font-bold uppercase hover:bg-black hover:text-white transition-colors"
             >
-              STEGANOGRAPHY
+              SANDBOX
             </Link>
             <Link
               href="/dashboard"

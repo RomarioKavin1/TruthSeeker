@@ -19,36 +19,15 @@ from io import BytesIO
 
 
 app = Flask(__name__)
-
-# Configure upload settings for larger files
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
-
-# Handle Flask's built-in file size errors
-@app.errorhandler(413)
-def file_too_large(e):
-    return jsonify({'error': 'Video file too large. Please use a smaller file (max 100MB).'}), 413
-
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-# Enhanced CORS configuration
+# You can also manually set CORS headers in each response if needed
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,Cache-Control')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,HEAD')
-    response.headers.add('Access-Control-Max-Age', '86400')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
-
-# Handle preflight OPTIONS requests
-@app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        response = jsonify({'status': 'ok'})
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,Cache-Control')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,HEAD')
-        response.headers.add('Access-Control-Max-Age', '86400')
-        return response
 
 # Configure upload settings
 UPLOAD_FOLDER = './uploads'
@@ -884,10 +863,8 @@ def health_check():
         "timestamp": datetime.now().isoformat()
     }), 200
 
-@app.route('/encrypt', methods=['POST', 'OPTIONS'])
+@app.route('/encrypt', methods=['POST'])
 def encrypt_endpoint():
-    if request.method == 'OPTIONS':
-        return '', 200
     """Endpoint to encrypt text and hide it in video"""
     if 'video' not in request.files or 'text' not in request.form:
         return jsonify({"error": "Missing video file or text"}), 400
@@ -951,10 +928,7 @@ def encrypt_endpoint():
         return jsonify(response)
     
     except Exception as e:
-        error_msg = str(e)
-        if "413" in error_msg or "Content Too Large" in error_msg or "File too large" in error_msg:
-            return jsonify({"error": "Video file too large. Please use a smaller file (max 100MB)."}), 413
-        return jsonify({"error": error_msg}), 500
+        return jsonify({"error": str(e)}), 500
     
     finally:
         # Clean up temporary files after response is sent
@@ -964,10 +938,8 @@ def encrypt_endpoint():
                 shutil.rmtree(temp_dir)
         except Exception as cleanup_error:
             print(f"Error cleaning up: {cleanup_error}")
-@app.route('/decrypt', methods=['POST', 'OPTIONS'])
+@app.route('/decrypt', methods=['POST'])
 def decrypt_endpoint():
-    if request.method == 'OPTIONS':
-        return '', 200
     """Endpoint to decrypt hidden text from video"""
     if 'video' not in request.files:
         return jsonify({"error": "Missing video file"}), 400
@@ -1007,10 +979,7 @@ def decrypt_endpoint():
             return jsonify({"error": "No hidden text found in video"}), 404
     
     except Exception as e:
-        error_msg = str(e)
-        if "413" in error_msg or "Content Too Large" in error_msg or "File too large" in error_msg:
-            return jsonify({"error": "Video file too large. Please use a smaller file (max 100MB)."}), 413
-        return jsonify({"error": error_msg}), 500
+        return jsonify({"error": str(e)}), 500
     
     finally:
         # Clean up temporary files
@@ -1022,7 +991,7 @@ if __name__ == '__main__':
     generate_keys()
     
     # Try different ports if the default is in use
-    port = 3000
+    port = 5001
     max_port_attempts = 10
     
     for attempt in range(max_port_attempts):
