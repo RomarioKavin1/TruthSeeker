@@ -72,16 +72,30 @@ export class BackendService {
     formData.append("video", videoFile);
     formData.append("text", text);
 
-    const response = await fetch(`${BACKEND_URL}/encrypt`, {
-      method: "POST",
-      body: formData,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
-    if (!response.ok) {
-      throw new Error(`Encryption failed: ${response.statusText}`);
+    try {
+      const response = await fetch(`${BACKEND_URL}/encrypt`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Encryption failed: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error("Encryption timed out after 60 seconds");
+      }
+      throw error;
     }
-
-    return await response.json();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -89,16 +103,30 @@ export class BackendService {
     const formData = new FormData();
     formData.append("video", videoFile);
 
-    const response = await fetch(`${BACKEND_URL}/decrypt`, {
-      method: "POST",
-      body: formData,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
-    if (!response.ok) {
-      throw new Error(`Decryption failed: ${response.statusText}`);
+    try {
+      const response = await fetch(`${BACKEND_URL}/decrypt`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Decryption failed: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error("Decryption timed out after 60 seconds");
+      }
+      throw error;
     }
-
-    return await response.json();
   }
 }
 

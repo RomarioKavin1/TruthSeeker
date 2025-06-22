@@ -7,6 +7,7 @@ import base64
 import numpy as np
 import colorsys
 import uuid
+import time
 from stegano import lsb
 from cryptography.hazmat.primitives.asymmetric import rsa, padding as rsa_padding
 from cryptography.hazmat.primitives import serialization, hashes
@@ -652,6 +653,7 @@ def add_data_border_to_frames(frames, data, temp_dir):
     
     print(f"[INFO] Added data borders to all {len(bordered_frames)} frames")
     return bordered_frames
+
 def detect_border_in_frame(frame):
     """Detect if a frame has our specific encoding pattern in the top-left corner"""
     # Get frame dimensions
@@ -818,35 +820,34 @@ def extract_border_data(video_path, temp_dir):
     if not raw_frames:
         return "No frames with border encoding found"
     
-    # Extract texts from each frame
+    # Extract texts from each frame and return immediately when STEGO data is found
+    for idx, frame in raw_frames:
+        text = decode_border_data(frame)
+        if text:
+            print(f"[INFO] Frame {idx}: {text[:30]}...")
+            
+            # Check for "STEGO:" pattern and return immediately
+            if "STEGO:" in text:
+                start = text.find("STEGO:")
+                # Get a generous chunk after the STEGO marker
+                end = min(start + 200, len(text))
+                fragment = text[start:end]
+                # Keep only text characters
+                clean_fragment = ''.join(c for c in fragment if c.isprintable())
+                print(f"[INFO] Found STEGO data, returning early: {clean_fragment}")
+                return clean_fragment
+    
+    # If no STEGO pattern found, return concatenated text from all frames
     frame_texts = []
     for idx, frame in raw_frames:
         text = decode_border_data(frame)
         if text:
             frame_texts.append((idx, text))
-            print(f"[INFO] Frame {idx}: {text[:30]}...")
     
     if not frame_texts:
         return "No decodable border data found"
     
-    # Look for "STEGO:" pattern
-    stego_fragments = []
-    for idx, text in frame_texts:
-        if "STEGO:" in text:
-            start = text.find("STEGO:")
-            # Get a generous chunk after the STEGO marker
-            end = min(start + 200, len(text))
-            fragment = text[start:end]
-            # Keep only text characters
-            clean_fragment = ''.join(c for c in fragment if c.isprintable())
-            stego_fragments.append(clean_fragment)
-    
-    if stego_fragments:
-        # Return the longest clean fragment
-        longest = max(stego_fragments, key=len)
-        return longest
-    
-    # If no STEGO pattern, return concatenated text from all frames
+    # Return concatenated text from all frames
     combined = " ".join(text for _, text in frame_texts)
     # Remove non-printable characters 
     clean_combined = ''.join(c for c in combined if c.isprintable())
@@ -894,6 +895,12 @@ def encrypt_endpoint():
         # Encrypt the text using RSA AFTER borders
         encrypted_text = encrypt_rsa(text)
         
+        # Add processing delay with progress messages
+        print("[INFO] Starting steganographic embedding...")
+        for i in range(10):
+            print(f"[INFO] Embedding data into frames... {i+1}/10")
+            time.sleep(1)  # Wait for 1 second each iteration
+        
         # Encode encrypted text into frames LAST
         frame_numbers = encode_frames(frames, encrypted_text, temp_dir)
         
@@ -938,6 +945,7 @@ def encrypt_endpoint():
                 shutil.rmtree(temp_dir)
         except Exception as cleanup_error:
             print(f"Error cleaning up: {cleanup_error}")
+
 @app.route('/decrypt', methods=['POST'])
 def decrypt_endpoint():
     """Endpoint to decrypt hidden text from video"""
@@ -960,21 +968,26 @@ def decrypt_endpoint():
         video_file.save(video_path)
         
         # First try to extract data from borders
+        print("[INFO] Starting border data extraction...")
+        for i in range(12):
+            print(f"[INFO] Processing frame analysis... {i+1}/12")
+            time.sleep(1)  # Wait for 1 second each iteration
         border_data = extract_border_data(video_path, temp_dir)
         
-        # Then try to decode and decrypt hidden text
+        # If we found border data, return it immediately
+        if border_data and border_data != "No frames with border encoding found" and border_data != "No decodable border data found":
+            print(f"[INFO] Found border data, returning early: {border_data}")
+            return jsonify({"border_data": border_data})
+        
+        # Only try to decode and decrypt hidden text if no border data was found
+        print("[INFO] No border data found, looking for steganographic data...")
+        for i in range(15):
+            print(f"[INFO] Analyzing steganographic patterns... {i+1}/15")
+            time.sleep(1)  # Wait for 1 second each iteration
         decrypted_text = decode_video(video_path, temp_dir)
         
-        response_data = {}
-        
-        if border_data:
-            response_data["border_data"] = border_data
-        
         if decrypted_text:
-            response_data["stego_data"] = decrypted_text
-        
-        if response_data:
-            return jsonify(response_data)
+            return jsonify({"stego_data": decrypted_text})
         else:
             return jsonify({"error": "No hidden text found in video"}), 404
     

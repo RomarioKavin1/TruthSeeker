@@ -10,6 +10,7 @@ import { createPublicClient, http } from "viem";
 import { sepolia } from "viem/chains";
 import { contractService } from "../services/ContractService";
 import { uploadProofToIPFS, UploadResult } from "@/lib/pinata-service";
+import { backendService } from "@/lib/backend-service";
 
 interface ProofData {
   hyliWallet?: {
@@ -653,71 +654,62 @@ export default function ProofProcessPage() {
       return;
     }
 
+    // Get the IPFS CID to embed
+    const ipfsCid = proofData?.ipfsUpload?.cid || ipfsUploadResult?.cid;
+    if (!ipfsCid) {
+      setError("No IPFS CID available for embedding");
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
-      // Prepare the data to embed in the video
-      const proofMetadata = {
-        wallet_address: proofData?.hyliWallet?.address,
-        zkpassport_nullifier: proofData?.zkPassport?.nullifier,
-        ethereum_tx: contractAddress,
-        hyli_tx: proofData?.onchainProof?.hyliTxHash,
-        ipfs_cid: proofData?.ipfsUpload?.cid || ipfsUploadResult?.cid,
-        ipfs_hash:
-          proofData?.ipfsUpload?.ipfsHash || ipfsUploadResult?.ipfsHash,
-        tier: tier,
-        timestamp: new Date().toISOString(),
-        verification_complete: true,
-      };
-
       // Convert base64 video back to blob
       const response = await fetch(recordedVideo);
       const videoBlob = await response.blob();
 
-      // Create form data for steganographic server
-      const formData = new FormData();
-      formData.append("video", videoBlob, "recorded_video.webm");
-      formData.append("text", JSON.stringify(proofMetadata));
-      formData.append("encrypt", "true");
-
-      // Send to steganography server
-      const stegoResponse = await fetch("http://localhost:5001/encrypt", {
-        method: "POST",
-        body: formData,
+      // Create File object from blob
+      const videoFile = new File([videoBlob], "recorded_video.mp4", {
+        type: "video/mp4",
       });
 
-      if (!stegoResponse.ok) {
-        throw new Error("Steganographic processing failed");
+      // Call backend service to encrypt (this returns JSON with base64 video)
+      const result = await backendService.encryptVideo(videoFile, ipfsCid);
+
+      if (result.mp4) {
+        // Convert base64 back to blob URL for preview and download
+        const processedBlob = new Blob(
+          [Uint8Array.from(atob(result.mp4), (c) => c.charCodeAt(0))],
+          { type: "video/mp4" }
+        );
+
+        const downloadUrl = URL.createObjectURL(processedBlob);
+
+        setProofData((prev) => ({
+          ...prev!,
+          steganographicVideo: {
+            processed: true,
+            downloadUrl: downloadUrl,
+            timestamp: new Date().toISOString(),
+          },
+        }));
+
+        // Mark step as completed
+        setSteps((prev) =>
+          prev.map((step, idx) =>
+            idx === 4 ? { ...step, status: "completed" } : step
+          )
+        );
+
+        // Complete the entire process
+        setIsComplete(true);
+
+        // Clean up session storage
+        sessionStorage.removeItem("recorded_video");
+        sessionStorage.removeItem("proof_data");
+        sessionStorage.removeItem("proof_process_step");
+        sessionStorage.removeItem("proof_process_state");
       }
-
-      // Get the processed video
-      const processedVideoBlob = await stegoResponse.blob();
-      const downloadUrl = URL.createObjectURL(processedVideoBlob);
-
-      setProofData((prev) => ({
-        ...prev!,
-        steganographicVideo: {
-          processed: true,
-          downloadUrl: downloadUrl,
-          timestamp: new Date().toISOString(),
-        },
-      }));
-
-      // Mark step as completed
-      setSteps((prev) =>
-        prev.map((step, idx) =>
-          idx === 4 ? { ...step, status: "completed" } : step
-        )
-      );
-
-      // Complete the entire process
-      setIsComplete(true);
-
-      // Clean up session storage
-      sessionStorage.removeItem("recorded_video");
-      sessionStorage.removeItem("proof_data");
-      sessionStorage.removeItem("proof_process_step");
-      sessionStorage.removeItem("proof_process_state");
     } catch (error) {
       console.error("Steganographic processing failed:", error);
       setError("Failed to process video with steganographic embedding");
@@ -806,7 +798,7 @@ export default function ProofProcessPage() {
         const ipfsText = ipfsInfo?.cid
           ? `Your proof is stored on IPFS: ${ipfsInfo.cid}`
           : "Proof data available for embedding";
-        return `Process your video with steganographic techniques to embed the verification proofs invisibly. ${ipfsText}`;
+        return `Process your video with steganographic techniques to embed the IPFS CID invisibly. ${ipfsText}`;
       default:
         return "";
     }
@@ -1191,6 +1183,24 @@ export default function ProofProcessPage() {
                         ✅ Video Ready for Processing
                       </div>
                     )}
+
+                  {currentStep === 4 && isProcessing && (
+                    <div className="bg-blue-100 border-2 border-blue-500 text-blue-700 p-4 font-mono text-sm">
+                      <div className="space-y-2">
+                        <div>🔄 PROCESSING STEGANOGRAPHIC EMBEDDING...</div>
+                        <div className="text-xs space-y-1">
+                          <div>• Analyzing video frames...</div>
+                          <div>
+                            • Embedding IPFS CID:{" "}
+                            {proofData?.ipfsUpload?.cid ||
+                              ipfsUploadResult?.cid}
+                          </div>
+                          <div>• Applying LSB steganography...</div>
+                          <div>• Finalizing encrypted video...</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {error && (
@@ -1212,15 +1222,44 @@ export default function ProofProcessPage() {
                   proofs.
                 </p>
 
+                {/* Video Preview Section */}
                 {proofData?.steganographicVideo?.downloadUrl && (
-                  <div className="pt-4">
-                    <a
-                      href={proofData.steganographicVideo.downloadUrl}
-                      download="truthseeker_verified_video.webm"
-                      className="px-8 py-4 bg-green-600 hover:bg-green-700 text-white font-bold uppercase border-4 border-black inline-block"
-                    >
-                      📥 DOWNLOAD VERIFIED VIDEO
-                    </a>
+                  <div className="space-y-4">
+                    <div className="border-4 border-green-600 bg-white p-4">
+                      <h3 className="font-bold uppercase mb-3 text-green-800">
+                        🎥 STEGANOGRAPHIC VIDEO PREVIEW
+                      </h3>
+                      <video
+                        src={proofData.steganographicVideo.downloadUrl}
+                        controls
+                        className="w-full max-w-2xl border-4 border-green-300 mx-auto"
+                        preload="metadata"
+                      />
+                      <div className="mt-3 text-sm text-green-700">
+                        <div>
+                          <strong>Status:</strong> IPFS CID embedded with
+                          steganography
+                        </div>
+                        <div>
+                          <strong>Embedded Data:</strong>{" "}
+                          {proofData?.ipfsUpload?.cid || ipfsUploadResult?.cid}
+                        </div>
+                        <div>
+                          <strong>Processing Time:</strong>{" "}
+                          {proofData.steganographicVideo.timestamp}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-4">
+                      <a
+                        href={proofData.steganographicVideo.downloadUrl}
+                        download="truthseeker_verified_video.webm"
+                        className="px-8 py-4 bg-green-600 hover:bg-green-700 text-white font-bold uppercase border-4 border-black inline-block"
+                      >
+                        📥 DOWNLOAD VERIFIED VIDEO
+                      </a>
+                    </div>
                   </div>
                 )}
               </div>

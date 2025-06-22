@@ -259,17 +259,22 @@ export default function SandboxPage() {
   const verifyVideo = async () => {
     if (!verifyFile) return;
 
+    console.log("Starting video verification...");
     setIsVerifying(true);
     setVerificationResult(null);
     setVerifyError("");
 
     try {
+      console.log("Calling backend service decryptVideo...");
       const result = await backendService.decryptVideo(verifyFile);
+      console.log("Backend service response:", result);
       setVerificationResult(result);
+      console.log("Verification result set successfully");
     } catch (error) {
       console.error("Verification error:", error);
       setVerifyError(error instanceof Error ? error.message : String(error));
     } finally {
+      console.log("Setting isVerifying to false");
       setIsVerifying(false);
     }
   };
