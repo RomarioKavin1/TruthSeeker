@@ -33,7 +33,7 @@ export default function LandingPage() {
               href="/dashboard"
               className="border-2 border-black bg-white px-4 py-2 font-bold uppercase hover:bg-black hover:text-white transition-colors"
             >
-              DASHBOARD
+              Verify
             </Link>
           </nav>
         </div>
