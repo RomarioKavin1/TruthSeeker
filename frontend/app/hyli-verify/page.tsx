@@ -531,8 +531,10 @@ export default function HyliVerifyPage() {
                 <ul className="text-sm text-blue-800 space-y-1">
                   <li>• Fill in the proof and vkey_hash fields (required)</li>
                   <li>• Adjust other parameters as needed</li>
-                  <li>• Click "Verify on Hyli" to submit to blockchain</li>
-                  <li>• Use "Load Sample Data" for testing</li>
+                  <li>
+                    • Click &quot;Verify on Hyli&quot; to submit to blockchain
+                  </li>
+                  <li>• Use &quot;Load Sample Data&quot; for testing</li>
                 </ul>
               </div>
             </div>

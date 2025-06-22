@@ -1,0 +1,349 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useWallet } from "../components/ClientWalletProvider";
+import Link from "next/link";
+
+interface ContractState {
+  state: unknown;
+  error?: string;
+}
+
+export default function DashboardPage() {
+  const { wallet, logout } = useWallet();
+  const [contract1State, setContract1State] = useState<ContractState | null>(
+    null
+  );
+  const [contract2State, setContract2State] = useState<ContractState | null>(
+    null
+  );
+  const [zkpassportState, setZkpassportState] = useState<ContractState | null>(
+    null
+  );
+  const [loading, setLoading] = useState(false);
+  const [initialResult, setInitialResult] = useState<string | null>(null);
+  const [confirmationResult, setConfirmationResult] = useState<string | null>(
+    null
+  );
+  const [zkPassportVerified] = useState(false);
+  const [showZkPassport, setShowZkPassport] = useState(false);
+
+  const fetchContractState = async (contractName: string) => {
+    try {
+      const nodeUrl =
+        process.env.NEXT_PUBLIC_NODE_BASE_URL || "http://localhost:4321";
+      const response = await fetch(
+        `${nodeUrl}/v1/indexer/contract/${contractName}/state`
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `HTTP error ${response.status}: ${errorText || response.statusText}`
+        );
+      }
+
+      const text = await response.text();
+      if (!text) {
+        throw new Error("Empty response");
+      }
+
+      const data = JSON.parse(text);
+      return { state: data };
+    } catch (error) {
+      console.error(`Error fetching ${contractName} state:`, error);
+      return {
+        state: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  };
+
+  useEffect(() => {
+    const fetchStates = async () => {
+      const [state1, state2, zkState] = await Promise.all([
+        fetchContractState("contract1"),
+        fetchContractState("contract2"),
+        fetchContractState("zkpassport"),
+      ]);
+      setContract1State(state1);
+      setContract2State(state2);
+      setZkpassportState(zkState);
+    };
+
+    fetchStates();
+    // Refresh states every minute
+    const interval = setInterval(fetchStates, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const pollTransactionStatus = async (txHash: string): Promise<void> => {
+    const maxAttempts = 30; // 30 seconds timeout
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        const nodeUrl =
+          process.env.NEXT_PUBLIC_NODE_BASE_URL || "http://localhost:4321";
+        const response = await fetch(
+          `${nodeUrl}/v1/indexer/transaction/hash/${txHash}`
+        );
+        if (!response.ok) {
+          throw new Error(`HTTP error ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.transaction_status === "Success") {
+          setConfirmationResult(
+            `Transaction confirmed successful! Hash: ${txHash}`
+          );
+          return;
+        }
+
+        // Wait 1 second before next attempt
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        attempts++;
+      } catch (error) {
+        console.error("Error polling transaction:", error);
+        // Continue polling even if there's an error
+      }
+    }
+
+    setConfirmationResult(
+      `Transaction ${txHash} timed out after ${maxAttempts} seconds`
+    );
+  };
+
+  const sendBlobTx = async () => {
+    setInitialResult("");
+    if (!wallet?.address) {
+      setInitialResult("Wallet not connected");
+      setConfirmationResult(null);
+      return;
+    }
+
+    setLoading(true);
+    setConfirmationResult(null);
+    try {
+      // Create identity blobs (simplified version)
+      const blob0 = {
+        contract_name: "wallet",
+        data: { identity: wallet.address, timestamp: Date.now() },
+      };
+      const blob1 = {
+        contract_name: "wallet",
+        data: { session: "active", address: wallet.address },
+      };
+
+      const headers = new Headers();
+      headers.append("content-type", "application/json");
+      headers.append("x-user", `${wallet.address}@wallet`);
+
+      if (wallet.sessionKey) {
+        headers.append("x-session-key", JSON.stringify(wallet.sessionKey));
+        headers.append("x-request-signature", "dashboard-transaction");
+      }
+
+      const serverUrl =
+        process.env.NEXT_PUBLIC_SERVER_BASE_URL || "http://localhost:4002";
+      const response = await fetch(`${serverUrl}/api/increment`, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify({
+          wallet_blobs: [blob0, blob1],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error ${response.status}`);
+      }
+
+      const data = await response.json();
+      setInitialResult(`Transaction sent! Hash: ${JSON.stringify(data)}`);
+
+      // Start polling for transaction status
+      await pollTransactionStatus(data);
+    } catch (error) {
+      console.error("Error sending transaction:", error);
+      setInitialResult(
+        `Error: ${error instanceof Error ? error.message : String(error)}`
+      );
+      setConfirmationResult(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!wallet) {
+    return (
+      <div className="wallet-page-wrapper">
+        <div className="landing-content-simple">
+          <h1 className="hero-title">
+            <span className="gradient-text">TruthSeeker</span> Dashboard
+          </h1>
+          <p className="hero-subtitle">
+            Please connect your Hyli wallet to access the dashboard
+          </p>
+          <Link
+            href="/"
+            className="blob-button"
+            style={{ textDecoration: "none", display: "inline-block" }}
+          >
+            Go to Home
+          </Link>
+        </div>
+        <div className="floating-shapes">
+          <div className="shape shape-1"></div>
+          <div className="shape shape-2"></div>
+          <div className="shape shape-3"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="App">
+      <button
+        className="logout-button"
+        onClick={logout}
+        style={{ position: "absolute", top: "24px", right: "24px" }}
+      >
+        Logout
+      </button>
+
+      <div className="app-header">
+        <h1 className="app-title">TruthSeeker Contract Interface</h1>
+        <p className="app-subtitle">
+          Monitor and interact with smart contracts on the Hyli network
+        </p>
+      </div>
+
+      <div className="wallet-info">
+        <div className="wallet-address">
+          <span className="wallet-label">Connected Wallet:</span>
+          <span className="wallet-value">
+            {wallet.address || "Not connected"}
+          </span>
+        </div>
+      </div>
+
+      <div className="action-buttons">
+        <button className="blob-button" onClick={sendBlobTx} disabled={loading}>
+          {loading ? "SENDING..." : "SEND BLOB TX"}
+        </button>
+        <button
+          className={`zkpassport-toggle-button ${
+            zkPassportVerified ? "verified" : ""
+          }`}
+          onClick={() => setShowZkPassport(!showZkPassport)}
+        >
+          {zkPassportVerified ? "✅ ZK Verified" : "🔐 ZK Passport"}
+        </button>
+      </div>
+
+      {/* Navigation buttons */}
+      <div className="action-buttons" style={{ marginTop: "20px" }}>
+        <Link
+          href="/zkpass"
+          className="zkpassport-toggle-button"
+          style={{
+            textDecoration: "none",
+            textAlign: "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          🔐 Basic ZK
+        </Link>
+        <Link
+          href="/zkpass-wallet"
+          className="zkpassport-toggle-button"
+          style={{
+            textDecoration: "none",
+            textAlign: "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          🔗 ZK + Wallet
+        </Link>
+      </div>
+
+      <div className="action-buttons" style={{ marginTop: "20px" }}>
+        <Link
+          href="/steganography"
+          className="zkpassport-toggle-button"
+          style={{
+            textDecoration: "none",
+            textAlign: "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          🖼️ Steganography
+        </Link>
+        <Link
+          href="/truth-discovery"
+          className="zkpassport-toggle-button"
+          style={{
+            textDecoration: "none",
+            textAlign: "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          🔍 Truth Discovery
+        </Link>
+      </div>
+
+      {initialResult && <div className="result">{initialResult}</div>}
+      {confirmationResult && <div className="result">{confirmationResult}</div>}
+
+      <div className="contract-states">
+        <div className="contract-state">
+          <h2>Contract 1 State</h2>
+          {contract1State?.error ? (
+            <div className="error">{contract1State.error}</div>
+          ) : (
+            <pre>
+              {contract1State?.state
+                ? JSON.stringify(contract1State.state, null, 2)
+                : "Loading..."}
+            </pre>
+          )}
+        </div>
+
+        <div className="contract-state">
+          <h2>Contract 2 State</h2>
+          {contract2State?.error ? (
+            <div className="error">{contract2State.error}</div>
+          ) : (
+            <pre>
+              {contract2State?.state
+                ? JSON.stringify(contract2State.state, null, 2)
+                : "Loading..."}
+            </pre>
+          )}
+        </div>
+
+        <div className="contract-state">
+          <h2>ZKPassport State</h2>
+          {zkpassportState?.error ? (
+            <div className="error">{zkpassportState.error}</div>
+          ) : (
+            <pre>
+              {zkpassportState?.state
+                ? JSON.stringify(zkpassportState.state, null, 2)
+                : "Loading..."}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
