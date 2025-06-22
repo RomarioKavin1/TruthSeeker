@@ -9,6 +9,7 @@ import QRCode from "react-qr-code";
 import { createPublicClient, http } from "viem";
 import { sepolia } from "viem/chains";
 import { contractService } from "../services/ContractService";
+import { uploadProofToIPFS, UploadResult } from "@/lib/pinata-service";
 
 interface ProofData {
   hyliWallet?: {
@@ -37,6 +38,12 @@ interface ProofData {
     processed: boolean;
     downloadUrl?: string;
     timestamp: string;
+  };
+  ipfsUpload?: {
+    cid: string;
+    ipfsHash: string;
+    size: number;
+    uploadedAt: string;
   };
   tier: string;
   timestamp: string;
@@ -70,6 +77,10 @@ export default function ProofProcessPage() {
   const [zkProofData, setZkProofData] = useState<ProofResult[]>([]);
   const [contractAddress, setContractAddress] = useState("");
   const [txHash, setTxHash] = useState("");
+  const [ipfsUploadResult, setIpfsUploadResult] = useState<UploadResult | null>(
+    null
+  );
+  const [isUploadingToIPFS, setIsUploadingToIPFS] = useState(false);
 
   const zkPassportRef = useRef<ZKPassport | null>(null);
 
@@ -152,6 +163,8 @@ export default function ProofProcessPage() {
           if (state.zkProofData) setZkProofData(state.zkProofData);
           if (state.contractAddress) setContractAddress(state.contractAddress);
           if (state.txHash) setTxHash(state.txHash);
+          if (state.ipfsUploadResult)
+            setIpfsUploadResult(state.ipfsUploadResult);
         } catch (error) {
           console.error("Error restoring saved state:", error);
         }
@@ -168,10 +181,18 @@ export default function ProofProcessPage() {
         zkProofData,
         contractAddress,
         txHash,
+        ipfsUploadResult,
       };
       sessionStorage.setItem("proof_process_state", JSON.stringify(state));
     }
-  }, [onChainVerified, hyliVerified, zkProofData, contractAddress, txHash]);
+  }, [
+    onChainVerified,
+    hyliVerified,
+    zkProofData,
+    contractAddress,
+    txHash,
+    ipfsUploadResult,
+  ]);
 
   // Watch for wallet connection and auto-proceed to step 1 (only if not returning from camera)
   useEffect(() => {
@@ -286,7 +307,21 @@ export default function ProofProcessPage() {
         console.log("Proof result", proof);
         proofs.push(proof);
         setZkProofData([...proofs]);
-        setZkPassportMessage("Proof generated - verifying on Ethereum...");
+        setZkPassportMessage("Proof generated - uploading to IPFS...");
+
+        // Upload proof to IPFS immediately after generation
+        const proofDataForIPFS = {
+          ...proof,
+          wallet_address: wallet?.address,
+          timestamp: new Date().toISOString(),
+          tier: tier,
+          app: "TruthSeeker",
+        };
+
+        await uploadProofToIPFS_Action(proofDataForIPFS);
+        setZkPassportMessage(
+          "Proof uploaded to IPFS - verifying on Ethereum..."
+        );
         setRequestInProgress(false);
 
         try {
@@ -391,6 +426,37 @@ export default function ProofProcessPage() {
       setError("Failed to create verification request");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // Upload proof data to IPFS via client-side (same as pinata-test)
+  const uploadProofToIPFS_Action = async (proofData: any) => {
+    setIsUploadingToIPFS(true);
+    try {
+      // Use the same client-side upload that works in pinata-test
+      const result = await uploadProofToIPFS(proofData);
+      setIpfsUploadResult(result);
+
+      if (result.success && result.cid) {
+        setProofData((prev) => ({
+          ...prev!,
+          ipfsUpload: {
+            cid: result.cid!,
+            ipfsHash: result.ipfsHash!,
+            size: result.size!,
+            uploadedAt: new Date().toISOString(),
+          },
+        }));
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Error uploading to IPFS:", error);
+      const errorResult = { success: false, error: "Upload failed" };
+      setIpfsUploadResult(errorResult);
+      return errorResult;
+    } finally {
+      setIsUploadingToIPFS(false);
     }
   };
 
@@ -596,6 +662,9 @@ export default function ProofProcessPage() {
         zkpassport_nullifier: proofData?.zkPassport?.nullifier,
         ethereum_tx: contractAddress,
         hyli_tx: proofData?.onchainProof?.hyliTxHash,
+        ipfs_cid: proofData?.ipfsUpload?.cid || ipfsUploadResult?.cid,
+        ipfs_hash:
+          proofData?.ipfsUpload?.ipfsHash || ipfsUploadResult?.ipfsHash,
         tier: tier,
         timestamp: new Date().toISOString(),
         verification_complete: true,
@@ -733,7 +802,11 @@ export default function ProofProcessPage() {
       case 3:
         return "Record your video content with the integrated camera. The proof will be embedded in this recording.";
       case 4:
-        return "Process your video with steganographic techniques to embed the verification proofs invisibly.";
+        const ipfsInfo = proofData?.ipfsUpload || ipfsUploadResult;
+        const ipfsText = ipfsInfo?.cid
+          ? `Your proof is stored on IPFS: ${ipfsInfo.cid}`
+          : "Proof data available for embedding";
+        return `Process your video with steganographic techniques to embed the verification proofs invisibly. ${ipfsText}`;
       default:
         return "";
     }
@@ -926,7 +999,68 @@ export default function ProofProcessPage() {
                             <strong>Verifier Contract:</strong>{" "}
                             {contractAddress || "Loading..."}
                           </div>
+                          <div>
+                            <strong>IPFS Storage:</strong>{" "}
+                            {isUploadingToIPFS ? (
+                              "🔄 Uploading..."
+                            ) : ipfsUploadResult?.success ? (
+                              <span className="text-green-600">✅ Stored</span>
+                            ) : (
+                              "⏳ Pending"
+                            )}
+                          </div>
                         </div>
+
+                        {/* IPFS Details */}
+                        {(ipfsUploadResult?.success ||
+                          proofData?.ipfsUpload) && (
+                          <div className="bg-green-50 p-3 rounded border border-green-200 text-xs space-y-2">
+                            <div className="font-bold text-green-800 border-b border-green-200 pb-1">
+                              📦 IPFS STORAGE DETAILS
+                            </div>
+                            <div>
+                              <strong>CID:</strong>{" "}
+                              <span className="font-mono bg-green-100 px-1 rounded">
+                                {proofData?.ipfsUpload?.cid ||
+                                  ipfsUploadResult?.cid}
+                              </span>
+                            </div>
+                            {(ipfsUploadResult?.gatewayUrl ||
+                              proofData?.ipfsUpload?.cid) && (
+                              <div>
+                                <strong>IPFS Link:</strong>{" "}
+                                <a
+                                  href={
+                                    ipfsUploadResult?.gatewayUrl ||
+                                    `https://blush-acceptable-bandicoot-493.mypinata.cloud/ipfs/${proofData?.ipfsUpload?.cid}`
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 underline text-xs break-all"
+                                >
+                                  View on IPFS ↗
+                                </a>
+                              </div>
+                            )}
+                            <div>
+                              <strong>Size:</strong>{" "}
+                              {proofData?.ipfsUpload?.size ||
+                                ipfsUploadResult?.size}{" "}
+                              bytes
+                            </div>
+                            <div>
+                              <strong>Uploaded:</strong>{" "}
+                              {proofData?.ipfsUpload?.uploadedAt
+                                ? new Date(
+                                    proofData.ipfsUpload.uploadedAt
+                                  ).toLocaleString()
+                                : "Just now"}
+                            </div>
+                            <div className="text-xs text-green-600 font-bold">
+                              🌐 Proof data permanently stored on IPFS network
+                            </div>
+                          </div>
+                        )}
 
                         {/* Detailed Proof Data */}
                         {zkProofData.length > 0 && (
