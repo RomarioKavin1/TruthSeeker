@@ -9,7 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@radix-ui/react-slot": "^1.2.3",
     "@zkpassport/sdk": "^0.5.5",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "hyli-check-secret": "^0.3.5",
     "hyli-wallet": "file:../manual_Scaffold/wallet/hyli-wallet",
     "next": "15.3.4",
@@ -17,6 +20,7 @@
     "react-dom": "^19.0.0",
     "react-qr-code": "^2.0.16",
     "react-router-dom": "^7.6.2",
+    "tailwind-merge": "^3.3.1",
     "viem": "^2.0.0"
   },
   "devDependencies": {

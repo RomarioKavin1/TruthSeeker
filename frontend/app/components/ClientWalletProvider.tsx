@@ -1,6 +1,6 @@
 "use client";
 
-import React, { ReactNode, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   WalletProvider as HyliWalletProvider,
   HyliWallet,
@@ -8,7 +8,7 @@ import {
 } from "hyli-wallet";
 
 interface ClientWalletProviderProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 export function ClientWalletProvider({ children }: ClientWalletProviderProps) {
@@ -44,7 +44,7 @@ export function ClientWalletProvider({ children }: ClientWalletProviderProps) {
         console.error("Wallet error:", error);
       }}
     >
-      {children as React.ReactNode}
+      {children as any}
     </HyliWalletProvider>
   );
 }
