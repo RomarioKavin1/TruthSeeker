@@ -8,7 +8,7 @@ import { useWallet } from "hyli-wallet";
 import { contractService } from "../services/ContractService";
 
 export default function ZKPassWalletPage() {
-  const { wallet, signMessageWithSessionKey } = useWallet();
+  const { wallet } = useWallet();
   const [message, setMessage] = useState("");
   const [isOver18, setIsOver18] = useState<boolean | undefined>(undefined);
   const [queryUrl, setQueryUrl] = useState("");
